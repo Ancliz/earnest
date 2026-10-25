@@ -1,0 +1,45 @@
+cmake_minimum_required(VERSION 3.16)
+project(smarthome LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(CTest)
+find_package(nlohmann_json 3.2 REQUIRED)
+add_library(command-parser parser.cpp)
+target_link_libraries(command-parser PUBLIC nlohmann_json::nlohmann_json)
+target_include_directories(command-parser PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(command-parser PRIVATE -Wall -Wextra -Wpedantic)
+
+add_library(device-aliases device_aliases.cpp)
+target_link_libraries(device-aliases PUBLIC command-parser)
+target_include_directories(device-aliases PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(device-aliases PRIVATE -Wall -Wextra -Wpedantic)
+
+if(BUILD_TESTING)
+    add_executable(parser-test tests/parser_test.cpp)
+    target_link_libraries(parser-test PRIVATE command-parser)
+    add_test(NAME parser COMMAND parser-test)
+    add_executable(device-aliases-test tests/device_aliases_test.cpp)
+    target_link_libraries(device-aliases-test PRIVATE device-aliases command-parser)
+    add_test(NAME device-aliases COMMAND device-aliases-test)
+endif()
+
+option(SMARTHOME_BUILD_VOICE "Build the Whisper microphone application" ON)
+if(SMARTHOME_BUILD_VOICE)
+    find_package(Threads REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PORTAUDIO REQUIRED IMPORTED_TARGET portaudio-2.0)
+    include(FetchContent)
+    set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(whisper
+        GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+        GIT_TAG 4979e04f5dcaccb36057e059bbaed8a2f5288315) # v1.8.2
+    FetchContent_MakeAvailable(whisper)
+    add_executable(voice-test main.cpp)
+    target_compile_options(voice-test PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(voice-test PRIVATE command-parser device-aliases whisper PkgConfig::PORTAUDIO Threads::Threads)
+endif()

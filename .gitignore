@@ -1,0 +1,21 @@
+/build*/
+/models/
+/voice-test
+
+# Local credentials
+.env
+.env.*
+!.env.example
+
+# Accidental in-source CMake output
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/DartConfiguration.tcl
+/Makefile
+/Testing/
+/_deps/
+/cmake_install.cmake
+/compile_commands.json
+
+tests/rest.http
