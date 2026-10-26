@@ -1,22 +1,25 @@
-#include "../parser.hpp"
+#include "parser/parser.hpp"
 
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
-using std::string;
 using Parser::json;
 using Parser::Options;
+using std::string;
 
 int checks = 0;
+
 void check(bool condition, const string& input) {
     ++checks;
-    if (!condition) {
+
+    if(!condition) {
         std::cerr << "FAIL: " << input << '\n';
         std::exit(1);
     }
 }
+
 void command(const string& input, const string& action, const json& target,
              const json& parameters = json::object()) {
     Options options;
@@ -41,22 +44,21 @@ void command(const string& input, const string& action, const json& target,
 
     check(actual == expected, input);
 }
+
 int main() {
-    for (const auto& input : {
-        "set the volume of the living room speaker to forty",
-        "set the living room speaker volume to 40",
-        "set the living room speaker's volume to forty percent",
-        "change volume on living room speaker to 40%",
-        "adjust the volume for the living room speaker at forty",
-        "put volume in living room speaker to forty",
-        "volume of living room speaker 40",
-        "living room speaker volume 40",
-        "set volume to forty on the living room speaker",
-        "set the volume to forty for living room speaker",
-        "turn living room speaker to 0.4",
-        "Could you please set the volume of the living room speaker to forty, please?",
-        "set the volumn of living room speaker to forty"
-    }) command(input, "volume_set", "living room speaker", {{"volume_level", 0.4}});
+    for(const auto& input :
+        {"set the volume of the living room speaker to forty", "set the living room speaker volume to 40",
+         "set the living room speaker's volume to forty percent",
+         "change volume on living room speaker to 40%",
+         "adjust the volume for the living room speaker at forty",
+         "put volume in living room speaker to forty", "volume of living room speaker 40",
+         "living room speaker volume 40", "set volume to forty on the living room speaker",
+         "set the volume to forty for living room speaker", "turn living room speaker to 0.4",
+         "Could you please set the volume of the living room speaker to forty, please?",
+         "set the volumn of living room speaker to forty"}) {
+        command(input, "volume_set", "living room speaker", {{"volume_level", 0.4}});
+    }
+
     command("turn the kitchen volume up by ten", "volume_up", "kitchen", {{"amount", .1}});
     command("turn the kitchen volume down", "volume_down", "kitchen");
     command("volume zero point four", "volume_set", nullptr, {{"volume_level", .4}});
@@ -69,16 +71,23 @@ int main() {
     command("set kitchen to full volume", "volume_set", "kitchen", {{"volume_level", 1.0}});
     command("set volume to half", "volume_set", nullptr, {{"volume_level", .5}});
     command("set volume to zero", "volume_set", nullptr, {{"volume_level", 0}});
-    for (const auto& input : {"turn kitchen up by ten", "raise kitchen volume by ten percent",
-        "increase volume on kitchen by ten", "turn volume up on kitchen by ten",
-        "volume up in kitchen by ten", "make kitchen louder by ten"})
+
+    for(const auto& input :
+        {"turn kitchen up by ten", "raise kitchen volume by ten percent", "increase volume on kitchen by ten",
+         "turn volume up on kitchen by ten", "volume up in kitchen by ten", "make kitchen louder by ten"}) {
         command(input, "volume_up", "kitchen", {{"amount", .1}});
-    for (const auto& input : {"turn kitchen down by ten", "lower kitchen volume by ten percent",
-        "decrease volume on kitchen by ten", "turn volume down on kitchen by ten",
-        "volume down in kitchen by ten", "make kitchen quieter by ten"})
+    }
+
+    for(const auto& input : {"turn kitchen down by ten", "lower kitchen volume by ten percent",
+                             "decrease volume on kitchen by ten", "turn volume down on kitchen by ten",
+                             "volume down in kitchen by ten", "make kitchen quieter by ten"}) {
         command(input, "volume_down", "kitchen", {{"amount", .1}});
-    for (const auto& input : {"turn the volume up", "turn up", "volume up", "raise volume"})
+    }
+
+    for(const auto& input : {"turn the volume up", "turn up", "volume up", "raise volume"}) {
         command(input, "volume_up", nullptr);
+    }
+
     command("turn volume down by five", "volume_down", nullptr, {{"amount", .05}});
     command("turn up by ten", "volume_up", nullptr, {{"amount", .1}});
     command("turn kitchen down", "volume_down", "kitchen");
@@ -99,17 +108,24 @@ int main() {
     command("go back one song in kitchen", "media_previous_track", "kitchen");
     command("turn on the kitchen", "turn_on", "kitchen");
     command("switch the kitchen off", "turn_off", "kitchen");
-    for (const auto& input : {"", "hello", "set volume to 101", "set volume to -10",
-        "set volume to - 10", "set volume to minus ten", "set volume to twenty fifty",
-        "set volume to ten cats", "volume one point five", "volume zero point twenty", "don't pause kitchen", "do not mute kitchen",
-        "pause kitchen and play bedroom", "set volume to 99999999999999999999999999999999"})
+
+    for(const auto& input :
+        {"", "hello", "set volume to 101", "set volume to -10", "set volume to - 10",
+         "set volume to minus ten", "set volume to twenty fifty", "set volume to ten cats",
+         "volume one point five", "volume zero point twenty", "don't pause kitchen", "do not mute kitchen",
+         "pause kitchen and play bedroom", "set volume to 99999999999999999999999999999999"}) {
         check(Parser::parse(input).is_null(), input);
+    }
+
     check(Parser::parse(string(513, 'x')).is_null(), "length limit");
     Options options;
     options.devices = {{"kitchen", "media_player.kitchen"}, {"living room speaker", "media_player.lounge"}};
-    check(Parser::parse("pause the kitchen", options)["body"]["entity_id"] == "media_player.kitchen", "exact alias");
-    check(Parser::parse("pause kichen", options)["body"]["entity_id"] == "media_player.kitchen", "fuzzy alias");
-    check(Parser::parse("pause living rom speker", options)["body"]["entity_id"] == "media_player.lounge", "two edits");
+    check(Parser::parse("pause the kitchen", options)["body"]["entity_id"] == "media_player.kitchen",
+          "exact alias");
+    check(Parser::parse("pause kichen", options)["body"]["entity_id"] == "media_player.kitchen",
+          "fuzzy alias");
+    check(Parser::parse("pause living rom speker", options)["body"]["entity_id"] == "media_player.lounge",
+          "two edits");
     check(Parser::parse("pause unknown", options).is_null(), "unknown device");
     options.fuzzyDevices = false;
     check(Parser::parse("pause kichen", options).is_null(), "fuzzy disabled");
@@ -122,19 +138,26 @@ int main() {
     options.defaultDevice = "media_player.kitchen";
     auto request = Parser::parse("pause", options);
     check(request == json({{"endpoint", "/services/media_player/media_pause"},
-        {"body", {{"entity_id", "media_player.kitchen"}}}}), "default device");
+                           {"body", {{"entity_id", "media_player.kitchen"}}}}),
+          "default device");
     request = Parser::parse("pause");
-    check(request["body"].contains("entity_id") && request["body"]["entity_id"].is_null(), "unresolved target");
+    check(request["body"].contains("entity_id") && request["body"]["entity_id"].is_null(),
+          "unresolved target");
     request = Parser::parse("turn up by ten");
     check(request == json({{"endpoint", "/conversation/process"},
-        {"body", {{"text", "turn up by ten"}, {"language", "en"}}}}), "relative without target delegates to conversation");
+                           {"body", {{"text", "turn up by ten"}, {"language", "en"}}}}),
+          "relative without target delegates to conversation");
     options.conversationAgent = "conversation.home_assistant";
     request = Parser::parse("Please turn kitchen up by ten percent!", options);
     check(request["body"] == json({{"text", "Please turn kitchen up by ten percent!"},
-        {"language", "en"}, {"agent_id", "conversation.home_assistant"}}), "original text and agent selection");
-    check(!request["body"].contains("entity_id") && !request["body"].contains("amount"), "conversation body has no service fields");
+                                   {"language", "en"},
+                                   {"agent_id", "conversation.home_assistant"}}),
+          "original text and agent selection");
+    check(!request["body"].contains("entity_id") && !request["body"].contains("amount"),
+          "conversation body has no service fields");
     request = Parser::parse("pause kitchen", options);
-    check(request["body"] == json({{"entity_id", "media_player.kitchen"}}), "service body has no conversation fields");
+    check(request["body"] == json({{"entity_id", "media_player.kitchen"}}),
+          "service body has no conversation fields");
     check(Parser::parse("turn kitchen up by 101 percent", options).is_null(), "invalid relative amount");
     std::cout << checks << " parser checks passed\n";
 }

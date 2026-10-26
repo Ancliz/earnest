@@ -1,0 +1,503 @@
+# Editable voice commands. Valid changes reload while the app is running.
+# [optional words], (alternatives|here), and {device}/{volume}/{temperature}/{percent}/{mode}/{option}.
+# The AdvantageAir policy reflects read-only diagnostics on 2026-10-26; keep installer settings intact.
+version: 1
+aliases:
+  climate.ac:
+  - air conditioner
+  - air conditioning
+  - air con
+  - aircon
+  - heating
+  - cooling
+  climate.ac_master_bed:
+  - master bedroom
+  - master bed
+  climate.ac_alasdair_bed:
+  - alasdair bedroom
+  - alasdair bed
+  climate.ac_craft_ldy:
+  - craft room
+  - laundry
+  - craft and laundry
+  climate.ac_tv_rump:
+  - tv and rumpus
+  - tv and rump
+  - rumpus room
+  - tv room
+  climate.ac_diningliving:
+  - dining and living
+  - dining living
+  - living room
+  switch.ac_myfan:
+  - my fan
+  - automatic ac fan
+advantage_air:
+  systems:
+  - entity: climate.ac
+    myzone_entity: select.ac_myzone
+    zones:
+    - climate.ac_master_bed
+    - climate.ac_alasdair_bed
+    - climate.ac_craft_ldy
+    - climate.ac_tv_rump
+    - climate.ac_diningliving
+    constant_zones:
+    - climate.ac_tv_rump
+    minimum_open_zones: 1
+    verified_preset: MyTemp
+rules:
+- id: speaker-volume
+  domain: media_player
+  service: volume_set
+  phrases:
+  - (set|change|adjust) [the] volume (of|on|for) [the] {device} (to|at) {volume}
+  - (set|change|adjust) [the] {device} volume (to|at) {volume}
+  body:
+    volume_level: '{volume}'
+- id: media-volume-set-1
+  domain: media_player
+  service: volume_set
+  regex: (?:(?:set|change|adjust|turn|put) )?(?:the )?(?:volume|volum|volumn|volome) (?:of|on|for|in) (.+?) (?:to|at) (.+)
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-2
+  domain: media_player
+  service: volume_set
+  regex: (?:(?:set|change|adjust|turn|put) )?(?:the )?(?:volume|volum|volumn|volome) (?:of|on|for|in) (.+) ([0-9]+(?:\.[0-9]+)?%?)
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-3
+  domain: media_player
+  service: volume_set
+  regex: (?:(?:set|change|adjust|turn|put) )?(?:the )?(?:volume|volum|volumn|volome) (?:to |at )?(.+)
+  value_group: 1
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-4
+  domain: media_player
+  service: volume_set
+  regex: (?:(?:set|change|adjust|turn|put) )?(?:the )?(.+?) (?:volume|volum|volumn|volome) (?:to |at )?(.+)
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-5
+  domain: media_player
+  service: volume_set
+  regex: (?:(?:set|change|adjust|turn|put) )?(?:the )?(?:volume|volum|volumn|volome) (?:to |at )?(.+?) (?:of|on|for|in) (.+)
+  device_group: 2
+  value_group: 1
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-6
+  domain: media_player
+  service: volume_set
+  regex: (?:set|turn|adjust) (.+?) (?:volume )?to (.+)
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body:
+    volume_level: '{value}'
+- id: media-volume-set-7
+  domain: media_player
+  service: volume_set
+  regex: (?:set|turn) (.+?) to (?:full|maximum|max) volume
+  device_group: 1
+  body:
+    volume_level: 1
+- id: media-volume-up-8
+  domain: media_player
+  service: volume_up
+  regex: '(?:turn (?:the )?volume up|volume up|turn up|louder)(?: by (.+))?'
+  value_group: 1
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-9
+  domain: media_player
+  service: volume_down
+  regex: '(?:turn (?:the )?volume down|volume down|turn down|quieter)(?: by (.+))?'
+  value_group: 1
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-10
+  domain: media_player
+  service: volume_up
+  regex: '(?:raise|increase|boost|turn up) (?:the )?volume(?: by (.+))?'
+  value_group: 1
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-11
+  domain: media_player
+  service: volume_down
+  regex: '(?:lower|decrease|reduce|turn down) (?:the )?volume(?: by (.+))?'
+  value_group: 1
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-12
+  domain: media_player
+  service: volume_up
+  regex: 'volume up (?:on |in |for )?(.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-13
+  domain: media_player
+  service: volume_down
+  regex: 'volume down (?:on |in |for )?(.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-14
+  domain: media_player
+  service: volume_up
+  regex: '(?:raise|increase|boost|turn up) (?:the )?(?:volume|volum)(?: )?(?:of|on|for|in) (.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-15
+  domain: media_player
+  service: volume_down
+  regex: '(?:lower|decrease|reduce|turn down) (?:the )?(?:volume|volum)(?: )?(?:of|on|for|in) (.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-16
+  domain: media_player
+  service: volume_up
+  regex: '(?:raise|increase|boost) (?:the )?(.+?) volume(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-17
+  domain: media_player
+  service: volume_down
+  regex: '(?:lower|decrease|reduce) (?:the )?(.+?) volume(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-18
+  domain: media_player
+  service: volume_up
+  regex: 'turn (?:the )?(?:volume )?up(?: )?(?:on |in |for )?(.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-19
+  domain: media_player
+  service: volume_down
+  regex: 'turn (?:the )?(?:volume )?down(?: )?(?:on |in |for )?(.+?)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-20
+  domain: media_player
+  service: volume_up
+  regex: 'turn (.+?) volume up(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-21
+  domain: media_player
+  service: volume_down
+  regex: 'turn (.+?) volume down(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-22
+  domain: media_player
+  service: volume_up
+  regex: 'turn (.+?) up(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-23
+  domain: media_player
+  service: volume_down
+  regex: 'turn (.+?) down(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-up-24
+  domain: media_player
+  service: volume_up
+  regex: '(?:make )?(.+?) (?:louder)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-down-25
+  domain: media_player
+  service: volume_down
+  regex: '(?:make )?(.+?) (?:quieter|softer)(?: by (.+))?'
+  device_group: 1
+  value_group: 2
+  value_type: volume
+  body: {}
+  relative: true
+- id: media-volume-mute-26
+  domain: media_player
+  service: volume_mute
+  regex: '(?:unmute|un mute)(?: (?:the )?(?:volume|audio|sound))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body:
+    is_volume_muted: false
+- id: media-volume-mute-27
+  domain: media_player
+  service: volume_mute
+  regex: '(?:mute|silence)(?: (?:the )?(?:volume|audio|sound))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body:
+    is_volume_muted: true
+- id: media-media-play-28
+  domain: media_player
+  service: media_play
+  regex: '(?:play|resume|unpause|continue)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-media-pause-29
+  domain: media_player
+  service: media_pause
+  regex: '(?:pause|paus)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-media-stop-30
+  domain: media_player
+  service: media_stop
+  regex: 'stop(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-media-play-pause-31
+  domain: media_player
+  service: media_play_pause
+  regex: '(?:toggle|play pause)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-media-next-track-32
+  domain: media_player
+  service: media_next_track
+  regex: '(?:skip to (?:the )?next(?: (?:song|track))?|next(?: (?:song|track))?|skip(?: (?:this|the))?(?: (?:song|track))?)(?:
+    (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-media-previous-track-33
+  domain: media_player
+  service: media_previous_track
+  regex: '(?:previous(?: (?:song|track))?|go back(?: (?:a|one) (?:song|track))?)(?: (?:on |in |for )?(.+))?'
+  device_group: 1
+  body: {}
+- id: media-turn-on-34
+  domain: media_player
+  service: turn_on
+  regex: '(?:turn|switch|power) on(?: (.+))?'
+  device_group: 1
+  body: {}
+- id: media-turn-off-35
+  domain: media_player
+  service: turn_off
+  regex: '(?:turn|switch|power) off(?: (.+))?'
+  device_group: 1
+  body: {}
+- id: media-turn-on-36
+  domain: media_player
+  service: turn_on
+  regex: (?:turn|switch|power) (.+) on
+  device_group: 1
+  body: {}
+- id: media-turn-off-37
+  domain: media_player
+  service: turn_off
+  regex: (?:turn|switch|power) (.+) off
+  device_group: 1
+  body: {}
+- id: media-media-pause-38
+  domain: media_player
+  service: media_pause
+  regex: (.+?) (?:pause|paus)
+  device_group: 1
+  body: {}
+- id: media-media-play-39
+  domain: media_player
+  service: media_play
+  regex: (.+?) (?:play|resume)
+  device_group: 1
+  body: {}
+- id: media-volume-mute-40
+  domain: media_player
+  service: volume_mute
+  regex: (.+?) unmute
+  device_group: 1
+  body:
+    is_volume_muted: false
+- id: media-volume-mute-41
+  domain: media_player
+  service: volume_mute
+  regex: (.+?) mute
+  device_group: 1
+  body:
+    is_volume_muted: true
+- id: climate-temperature
+  domain: climate
+  service: set_temperature
+  phrases:
+  - (set|change|adjust) [the] (temperature|temp) (of|on|for|in) {device} (to|at) {temperature}
+  - (set|change|adjust) [the] {device} temperature (to|at) {temperature}
+  - (set|change) {device} to {temperature} degrees
+  - make {device} {temperature} degrees
+  - (set|change) [the] (ac|air con) [temperature] (in|for) [the] {device} to {temperature}
+  body:
+    temperature: '{temperature}'
+- id: climate-cool
+  domain: climate
+  service: set_hvac_mode
+  phrases:
+  - (cool|start cooling) [the] {device}
+  - (set|change) {device} [mode] to (cool|cooling)
+  body:
+    hvac_mode: cool
+- id: climate-heat
+  domain: climate
+  service: set_hvac_mode
+  phrases:
+  - (heat|start heating) [the] {device}
+  - (set|change) {device} [mode] to (heat|heating)
+  - change to (heat|heating)
+  body:
+    hvac_mode: heat
+- id: climate-fan-only
+  domain: climate
+  service: set_hvac_mode
+  phrases:
+  - (set|change) {device} [mode] to fan only
+  body:
+    hvac_mode: fan_only
+- id: climate-dry
+  domain: climate
+  service: set_hvac_mode
+  phrases:
+  - (set|change) {device} [mode] to dry
+  body:
+    hvac_mode: dry
+- id: climate-fan
+  domain: climate
+  service: set_fan_mode
+  phrases:
+  - (set|change) [the] fan speed (on|of|for) {device} to {mode}
+  - (set|change) [the] {device} fan [speed] to {mode}
+  body:
+    fan_mode: '{mode}'
+  values:
+    automatic: auto
+    slow: low
+    fast: high
+- id: climate-on
+  domain: climate
+  service: turn_on
+  phrases:
+  - (turn|switch|power) on [the] {device}
+  - (turn|switch|power) [the] {device} on
+  - (turn|switch) on [the] (ac|air con|air conditioning) (in|for) [the] {device}
+  body: {}
+- id: climate-off
+  domain: climate
+  service: turn_off
+  phrases:
+  - (turn|switch|power) off [the] {device}
+  - (turn|switch|power) [the] {device} off
+  body: {}
+- id: light-on
+  domain: light
+  service: turn_on
+  phrases:
+  - (turn|switch|power) on [the] {device}
+  - (turn|switch|power) [the] {device} on
+  body: {}
+- id: light-off
+  domain: light
+  service: turn_off
+  phrases:
+  - (turn|switch|power) off [the] {device}
+  - (turn|switch|power) [the] {device} off
+  body: {}
+- id: switch-on
+  domain: switch
+  service: turn_on
+  phrases:
+  - (turn|switch|power) on [the] {device}
+  - (turn|switch|power) [the] {device} on
+  body: {}
+- id: switch-off
+  domain: switch
+  service: turn_off
+  phrases:
+  - (turn|switch|power) off [the] {device}
+  - (turn|switch|power) [the] {device} off
+  body: {}
+- id: fan-on
+  domain: fan
+  service: turn_on
+  phrases:
+  - (turn|switch|power) on [the] {device}
+  - (turn|switch|power) [the] {device} on
+  body: {}
+- id: fan-off
+  domain: fan
+  service: turn_off
+  phrases:
+  - (turn|switch|power) off [the] {device}
+  - (turn|switch|power) [the] {device} off
+  body: {}
+- id: light-brightness
+  domain: light
+  service: turn_on
+  phrases:
+  - (set|change) [the] brightness (of|on|for) {device} to {percent}
+  - (set|change) [the] {device} brightness to {percent}
+  body:
+    brightness_pct: '{percent}'
+- id: fan-percentage
+  domain: fan
+  service: set_percentage
+  phrases:
+  - (set|change) [the] speed (of|on|for) {device} to {percent}
+  - (set|change) [the] {device} speed to {percent}
+  body:
+    percentage: '{percent}'

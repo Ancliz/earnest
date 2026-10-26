@@ -1,14 +1,14 @@
 # Smart-home voice commands
 
-C++17 microphone recognition with whisper.cpp and PortAudio. Final English
-transcripts go through the existing regex command parser and print the same
-`Final:`, `Command recognized:`, or `No command recognized` messages as the
-Moonshine prototype. Recognized commands are printed and posted to Home Assistant.
+C++17 microphone recognition with whisper.cpp and PortAudio. English transcripts go through the regex command parser and recognized commands
+are posted to Home Assistant. Transcript and parsed-request printing is currently
+debug output, handled by `debugPrintTranscript`. Speech capture and parsing do not
+depend on that output.
 
 ## Build and run
 
 Install CMake, a C++17 compiler, pkg-config, PortAudio development files, and
-nlohmann-json, and cpp-httplib headers. CMake downloads the pinned whisper.cpp v1.8.2 source on first
+nlohmann-json, libyaml development files, and cpp-httplib headers. CMake downloads the pinned whisper.cpp v1.8.2 source on first
 configuration; no Python runtime is needed.
 
 ```sh
@@ -45,33 +45,35 @@ GPU use depends on how whisper.cpp was built; the default build supports CPU.
 For NVIDIA acceleration, configure with `-DGGML_CUDA=ON`; for Vulkan,
 `-DGGML_VULKAN=ON`. `--cpu` disables GPU use at runtime.
 
-## Command flow
+## Commands and discovery
 
-`Transcriber::transcribe` only converts audio into text. `processUtterance` parses
-that text once, calls `printCommand`, then passes recognized request JSON to
-`HomeAssistant::post`. Both silence detection and shutdown flushing use this same
-path. `UtteranceBuffer` owns speech detection, preroll, and overflow recovery;
-`main` connects capture to processing.
+See [the phrase guide](docs/phrases.md) for the YAML format and C++ API, and
+[the AdvantageAir notes](docs/advantage_air.md) for the verified installation and
+control constraints. Edit `config/phrases.yaml` to add phrases and aliases; valid changes
+reload while the app runs, without recompiling. An invalid replacement keeps the
+last valid configuration.
 
-HTTP uses a reused client with timeouts, `Authorization: Bearer ...`, and JSON
-content type. Set `HOME_ASSISTANT_TOKEN` before starting; a missing/empty token
-produces a startup error. The host and port are configured near the top of `main.cpp`.
-Service requests without a device are printed but not sent. Request failures and
-conversation-agent errors are reported without retrying or stopping microphone capture.
-At startup, `HomeAssistant::getStates()` queries `/api/states`, and the separate
-`populateDeviceAliases` function fills `Parser::Options::devices`. Friendly names,
-full entity IDs, and entity names with underscores replaced by spaces resolve to
-media-player entity IDs. Both processing paths use these options. Duplicate normalized
-aliases are blocked rather than choosing a device arbitrarily. Non-media-player
-entities are ignored. Fetch/JSON errors or no media players stop startup, preventing
-an accidental fallback to unresolved names. Restart to refresh the snapshot; the
-population function replaces aliases while preserving other parser options.
+```sh
+./build/voice-test --list-devices
+./build/voice-test --check-phrases
+./build/voice-test --parse 'set master bedroom temperature to twenty two'
+```
 
-## Parser
+The discovery and dry-run modes send no control commands and require no Whisper
+model. Set `HOME_ASSISTANT_TOKEN` in the environment or ignored `.env` file. Optionally
+set `HOME_ASSISTANT_URL` to a full URL including port.
 
-See [tests/parser.md](tests/parser.md) for supported phrases, output JSON, and optional
-fuzzy device aliases. The app loads media-player aliases from your Home Assistant
-instance at startup. This does not fetch Assist entity-registry aliases.
+`HomeAssistant::getStates` fetches state; `findAvailableDevices` filters controllable
+entities; `populateDeviceAliases` builds domain-specific maps; `Parser::resolveEntityId`
+looks up a spoken name using those maps. Friendly-name normalization is shared.
+`Parser::Engine` compiles rules from YAML. `processUtterance` transcribes, parses once,
+calls `debugPrintTranscript` for diagnostic output, then posts through the separate Home Assistant client. Both
+utterance completion and shutdown use this same path. Posting rechecks live state
+and the current service list, applies capability and airflow constraints, and sends
+one request with timeouts and no automatic retries. The program does not generate
+phrases at runtime or send climate commands through a conversation agent.
+
+## Parser tests
 
 To build just the parser and tests without downloading Whisper or needing PortAudio:
 
@@ -83,3 +85,16 @@ ctest --test-dir build-parser --output-on-failure
 
 References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper).
+
+## Project layout
+
+- `src/app/`: startup, settings, Whisper transcription, and command dispatch.
+- `src/audio/`: microphone capture and utterance buffering.
+- `src/parser/`: phrase parsing, YAML decoding, and text/device-name matching.
+- `src/home_assistant/`: HTTP client, device discovery, and control policy.
+- `config/phrases.yaml`: editable phrases, aliases, and installation policy.
+- `tests/` and `docs/`: automated checks and supporting documentation.
+
+Small application-only helpers live in `src/app/main.cpp`. Parser implementation
+helpers share `src/parser/detail.hpp`; separate headers remain for shared module
+interfaces and classes with substantial implementations.
