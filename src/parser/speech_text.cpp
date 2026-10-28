@@ -1,9 +1,9 @@
 /**
  * @file
- * @brief Transcript normalization and strict normalized spoken-number parsing.
+ * @brief Transcript normalization and strict spoken-number parsing.
  */
 
-#include "detail.hpp"
+#include "speech_text.hpp"
 
 #include <cctype>
 #include <cmath>
@@ -11,33 +11,48 @@
 #include <sstream>
 #include <unordered_map>
 
-namespace Parser::Detail {
-using std::istringstream;
+namespace Grammar {
+using std::nullopt;
+using std::optional;
 using std::regex;
-using std::string;
-using std::unordered_map;
+
+namespace {
+/**
+ * @brief Pattern for a trailing " percent", " per cent" or "%".
+ */
+const regex& percentSuffix() {
+    static const regex pattern(R"((?: percent| per cent|%)$)");
+    return pattern;
+}
 
 /**
- * @copydoc Parser::Detail::trim(const std::string&)
+ * @brief Values of the number words that make up zero..ninety-nine.
  */
+const std::unordered_map<string, int>& numberWords() {
+    static const std::unordered_map<string, int> words = {
+        {"zero", 0},     {"one", 1},      {"two", 2},        {"three", 3},     {"four", 4},
+        {"five", 5},     {"six", 6},      {"seven", 7},      {"eight", 8},     {"nine", 9},
+        {"ten", 10},     {"eleven", 11},  {"twelve", 12},    {"thirteen", 13}, {"fourteen", 14},
+        {"fifteen", 15}, {"sixteen", 16}, {"seventeen", 17}, {"eighteen", 18}, {"nineteen", 19},
+        {"twenty", 20},  {"thirty", 30},  {"forty", 40},     {"fifty", 50},    {"sixty", 60},
+        {"seventy", 70}, {"eighty", 80},  {"ninety", 90}};
+    return words;
+}
+} // namespace
+
 string trim(const string& text) {
     const auto first = text.find_first_not_of(' ');
     return first == string::npos ? "" : text.substr(first, text.find_last_not_of(' ') - first + 1);
 }
 
-/**
- * @copydoc Parser::Detail::normalize(const std::string&)
- */
-string normalize(const string& input) {
+string normalizeText(const string& text) {
     string result;
-    result.reserve(input.size());
+    result.reserve(text.size());
 
-    for(unsigned char c : input) {
+    for(unsigned char c : text) {
         if(c == '&') {
             result += " and ";
-        } else if(c == '-' || std::isspace(c)) {
-            result += ' ';
-        } else if(c == ',' || c == '!' || c == '?') {
+        } else if(c == '-' || c == ',' || c == '!' || c == '?' || std::isspace(c)) {
             result += ' ';
         } else {
             result += static_cast<char>(std::tolower(c));
@@ -55,137 +70,125 @@ string normalize(const string& input) {
     return trim(std::regex_replace(result, spaces, " "));
 }
 
-// Deliberately strict number grammar: prevents junk or another command being swallowed.
-/**
- * @copydoc Parser::Detail::level(std::string, double&)
- */
-bool level(string text, double& value) {
-    text = trim(text);
-    bool percent = false;
+string normalizeName(const string& name) {
+    string result = normalizeText(name);
 
-    for(const string suffix : {" percent", " per cent", "%"}) {
-        if(text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix) {
-            percent = true;
-            text = trim(text.substr(0, text.size() - suffix.size()));
-            break;
-        }
+    if(result.compare(0, 4, "the ") == 0) {
+        result.erase(0, 4);
     }
 
+    if(result.size() > 2 && result.compare(result.size() - 2, 2, "'s") == 0) {
+        result.resize(result.size() - 2);
+    }
+
+    return trim(result);
+}
+
+bool hasPercentSuffix(const string& text) {
+    return std::regex_search(text, percentSuffix());
+}
+
+optional<double> parseLevel(string text) {
+    text = trim(text);
+    const bool percent = hasPercentSuffix(text);
+    text = trim(std::regex_replace(text, percentSuffix(), ""));
     static const regex digits(R"((?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))");
 
     if(std::regex_match(text, digits)) {
+        double value = 0;
+
         try {
             value = std::stod(text);
         } catch(...) {
-            return false;
+            return nullopt;
         }
 
-        // Bare decimals below one are normalized levels; whole numbers are percentages.
+        // Bare decimals up to one are levels; whole numbers and larger values are percentages.
         if(percent || text.find('.') == string::npos || value > 1) {
             value /= 100;
         }
 
-        return std::isfinite(value) && value >= 0 && value <= 1;
+        return std::isfinite(value) && value >= 0 && value <= 1 ? optional<double>(value) : nullopt;
     }
 
-    static const unordered_map<string, int> small = {
-        {"zero", 0},     {"one", 1},      {"two", 2},        {"three", 3},     {"four", 4},
-        {"five", 5},     {"six", 6},      {"seven", 7},      {"eight", 8},     {"nine", 9},
-        {"ten", 10},     {"eleven", 11},  {"twelve", 12},    {"thirteen", 13}, {"fourteen", 14},
-        {"fifteen", 15}, {"sixteen", 16}, {"seventeen", 17}, {"eighteen", 18}, {"nineteen", 19},
-        {"twenty", 20},  {"thirty", 30},  {"forty", 40},     {"fifty", 50},    {"sixty", 60},
-        {"seventy", 70}, {"eighty", 80},  {"ninety", 90}};
-
+    const auto& words = numberWords();
     const auto point = text.find("point ");
 
+    // "<whole> point <digit words>": "zero point four" is 0.4, "twenty point five percent" is 0.205.
     if(point != string::npos) {
-        const auto whole = trim(text.substr(0, point));
+        const string whole = trim(text.substr(0, point));
+        double value = 0;
 
-        double wholeValue = 0;
+        if(!whole.empty()) {
+            const auto wholeLevel = parseLevel(whole + " percent");
 
-        if(!whole.empty() && !level(whole + " percent", wholeValue)) {
-            return false;
+            if(!wholeLevel) {
+                return nullopt;
+            }
+
+            value = *wholeLevel * 100;
         }
 
-        value = wholeValue * 100;
-
         if(!percent && value > 1) {
-            return false;
+            return nullopt;
         }
 
         double place = 0.1;
-        istringstream words(text.substr(point + 6));
-        string word;
-        bool any = false;
+        bool anyDigit = false;
+        std::istringstream digitWords(text.substr(point + 6));
 
-        while(words >> word) {
-            const auto digit = small.find(word);
+        // Each word after "point" is one more decimal digit.
+        for(string word; digitWords >> word; place *= 0.1) {
+            const auto digit = words.find(word);
 
-            if(digit == small.end() || digit->second > 9) {
-                return false;
+            if(digit == words.end() || digit->second > 9) {
+                return nullopt;
             }
 
             value += digit->second * place;
-            place *= 0.1;
-            any = true;
+            anyDigit = true;
         }
 
         if(percent) {
             value /= 100;
         }
 
-        return any && value <= 1;
+        return anyDigit && value <= 1 ? optional<double>(value) : nullopt;
     }
 
     if(text == "half") {
-        value = 0.5;
-        return true;
+        return 0.5;
     }
 
     if(text == "full" || text == "maximum" || text == "max" || text == "one hundred" || text == "a hundred") {
-        value = 1;
-        return true;
+        return 1.0;
     }
 
     if(text == "minimum" || text == "min") {
-        value = 0;
-        return true;
+        return 0.0;
     }
 
-    const auto found = small.find(text);
+    const auto single = words.find(text);
 
-    if(found != small.end()) {
-        value = found->second / 100.0;
-        return true;
+    if(single != words.end()) {
+        return single->second / 100.0;
     }
 
+    // Compound "<tens> <units>", such as "forty two".
     const auto space = text.find(' ');
 
     if(space == string::npos) {
-        return false;
+        return nullopt;
     }
 
-    const auto tens = small.find(text.substr(0, space));
-    const auto units = small.find(text.substr(space + 1));
+    const auto tens = words.find(text.substr(0, space));
+    const auto units = words.find(text.substr(space + 1));
 
-    /*
-     * @brief Check whether captured words form one valid tens-plus-units number.
-     *
-     * @return True when both captured iterators exist, the first value is a multiple of
-     *         ten from twenty upward, and the second is a unit from one through nine.
-     * @note Examines captured lookup results without changing the number dictionary.
-     */
-    const auto isValidCompoundNumber = [&] {
-        return tens != small.end() && units != small.end() && tens->second >= 20 && tens->second % 10 == 0 &&
-               units->second >= 1 && units->second <= 9;
-    };
-
-    if(!isValidCompoundNumber()) {
-        return false;
+    if(tens == words.end() || units == words.end() || tens->second < 20 || tens->second % 10 != 0 ||
+       units->second < 1 || units->second > 9) {
+        return nullopt;
     }
 
-    value = (tens->second + units->second) / 100.0;
-    return true;
+    return (tens->second + units->second) / 100.0;
 }
-
-} // namespace Parser::Detail
+} // namespace Grammar

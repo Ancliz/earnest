@@ -40,12 +40,12 @@ as editable regex rules with `device_group` and `value_group` capture indexes.
 Noncapturing groups `(?:...)` do not affect those indexes. `value_type` is `volume`,
 `percent`, or `temperature`; regex numeric output is also available as `{value}`.
 
-An explicit `relative: true` on a media-player volume-up/down rule produces an
-internal `/commands/media_player/adjust_volume` intent with `entity_id` and a
-signed, normalized `amount`. The executor reads the current volume immediately
-before execution, clamps the result to 0–1, and posts `volume_set`. A missing
-current volume rejects the command. An omitted optional amount uses the direct
-volume-up/down service. Arbitrary `/conversation/process` requests are rejected.
+An explicit `relative: true` on a media-player volume-up/down rule turns a spoken
+amount into a `volume_up`/`volume_down` command with a normalized `amount` field.
+The executor reads the current volume immediately before execution, clamps the
+result to 0–1, and posts `volume_set`. A missing current volume rejects the command.
+An omitted optional amount uses the direct volume-up/down service. Services outside
+`Commands::serviceCatalog()` are rejected.
 
 Rule order determines the first valid interpretation within a domain. Matches
 that resolve to different commands across domains are rejected, so a speaker and
@@ -68,59 +68,45 @@ aliases:
 
 Only discovered entities receive these aliases. Duplicate normalized names within
 a domain are blocked. Fuzzy matching is bounded and can be disabled with
-`Options::fuzzyDevices`. Discovery lists controllable entities; this is different
+`Commands::Context::fuzzyNames`. Discovery lists controllable entities; this is different
 from Home Assistant's physical-device registry. Assist's separate registry aliases
 are not fetched by this application.
 
 ## C++ API
 
 ```cpp
-std::unique_ptr<Commands::Parser> parser = std::make_unique<Parser::RegexParser>();
-Config::Configuration configuration("config/phrases.yaml", [&](const Commands::json& candidate) {
-    validateControlConfiguration(candidate);
+std::unique_ptr<Commands::Parser> parser = std::make_unique<RegexParser>();
+std::unique_ptr<Commands::Executor> executor = std::make_unique<HomeAssistant>("http://wyvern:8123", token);
+Config::Configuration configuration(Config::defaultPhraseFile, [&](const Commands::json& candidate) {
+    executor->configure(candidate);
     parser->configure(candidate);
 });
-HomeAssistant assistant("http://wyvern:8123", token);
-Commands::Executor& executor = assistant;
 
-const auto states = assistant.getStates();
-const auto context = buildCommandContext(states);
-const auto command = parser->parse("set master bedroom temperature to twenty two", context);
-// {"endpoint":"/services/climate/set_temperature",
-//  "body":{"entity_id":"climate.ac_master_bed","temperature":22}}
+const auto command = parser->parse("set master bedroom temperature to twenty two", {executor->discoverDevices()});
+// {"domain":"climate","service":"set_temperature","entity":"climate.ac_master_bed","data":{"temperature":22}}
 
 // Explicitly choose either a read-only preview or execution:
-const auto preview = executor.check(command, configuration.data());
-// const auto result = executor.execute(command, configuration.data());
+const auto preview = executor->preview(*command);
+// const auto result = executor->execute(*command);
 ```
 
-`Commands::Parser` defines `configure(configuration)` and `parse(text, context)`.
-The regex implementation accepts a decoded configuration, compiles rules once,
-and does no file/network access. `configure` commits only after all rules compile.
-An LLM adapter implements the same interface; selecting it does not change the
-transcriber or executor. No LLM adapter is included yet.
+`Commands::Parser` defines `configure(configuration)` and `parse(text, context)`,
+returning at most one `Commands::Command`. `RegexParser` compiles rules once and does
+no file or network access; `configure` commits only after every rule compiles. An LLM
+parser implements the same interface (see `src/ollama/ollama_parser.hpp`).
 
-`Config::Configuration` performs file reads and reloads. Its application callback
-validates control policy before configuring the selected parser. `reload()` throws
-on an invalid candidate; `reloadIfChanged()` retains the previous configuration and
-reports failure via `error()`. Call it explicitly from the app's timer/before parsing.
-`RegexParser::addPhrase(ruleId, phrase)` adds a validated in-memory phrase; save it
-in YAML to persist it. The next configuration update replaces in-memory additions.
+`Config::Configuration` performs file reads and reloads. `reloadIfChanged()` returns
+true when changed text is applied and throws when it is rejected; every consumer then
+keeps the previous configuration. Rejected text is not retried until the file changes.
 Configuration and parsing run on the main thread; synchronize externally if sharing
 these mutable objects between threads.
 
-The hidden global `Parser::parse` convenience wrapper and file-owning `Engine`
-were removed. Use an explicit parser instance. `Config::defaultFile()` supplies
-the source project's `config/phrases.yaml` path, or pass `--phrases FILE`.
+`validateCommand(command, devices, policy)` is pure: it resolves relative volume and
+validates against the supplied device snapshot and `AirflowPolicy`. It returns a
+`Commands::Result` with `success`, `error`, and the resolved `command`, and never throws.
 
-`prepareCommand(request, states, configuration)` is pure: it resolves relative
-volume and validates against supplied snapshots. It returns an `ExecutionResult`
-with `success`, `error`, and the resolved `request`. `validateCommand` returns its
-error string for callers only interested in validation. Invalid request/state/policy
-JSON returns a rejection instead of escaping as a JSON exception.
-
-`HomeAssistant::check` queries fresh state and service availability without posting.
-`execute` uses that same check before posting exactly once. It returns errors to the
+`HomeAssistant::preview` queries fresh state and service availability without posting.
+`execute` uses that same preview before posting exactly once. It returns errors to the
 caller without logging, retrying, substituting modes, or opening zones automatically.
 The executor validates commands independently of the parser that supplied them.
 
@@ -146,21 +132,21 @@ port, default `http://wyvern:8123`).
 
 | Path | Responsibility |
 | --- | --- |
-| `src/app/main.cpp` | Backend selection, explicit stage orchestration, and reporting |
-| `src/commands/command.hpp` | Parser/executor interfaces, context, and execution results |
-| `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
-| `src/speech/transcriber.hpp` | Whisper model lifetime and speech-to-text |
+| `src/app/main.cpp` | Implementation selection, stage orchestration, and reporting |
 | `src/app/settings.*` | Arguments, local connection settings, help |
+| `src/commands/command.hpp` | `Command`, `Device`, `Context`, `Result`, and the `Parser`/`Executor` interfaces |
+| `src/commands/services.hpp` | Shared domain/service/field catalog |
+| `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
+| `src/speech/transcriber.hpp` | `Speech::Transcriber` interface |
+| `src/speech/whisper_transcriber.*` | Whisper model lifetime and speech-to-text |
 | `src/audio/microphone.*` | PortAudio capture and bounded capture queue |
 | `src/audio/utterance_buffer.*` | Speech energy, silence boundaries, overflow recovery |
 | `src/audio/audio.hpp` | Shared audio sample type and capture constants |
-| `src/home_assistant/home_assistant.*` | Authenticated HTTP state/service queries and posting |
-| `src/home_assistant/device_aliases.*` | Entity discovery and alias population |
+| `src/home_assistant/home_assistant.*` | Discovery, authenticated state/service queries, and posting |
 | `src/home_assistant/control_policy.*` | Pure command resolution, capability checks, and AC airflow policy |
-| `src/home_assistant/services.hpp` | Shared domain/service/field catalog |
-| `src/parser/parser.*` | Regex backend and compiled rule snapshot |
-| `src/parser/detail.hpp` | Shared internal parser declarations |
-| `src/parser/device_names.cpp` | Domain-scoped exact/fuzzy name resolution |
-| `src/parser/speech_text.cpp` | Text normalization and spoken numbers |
-| `src/parser/phrase_rules.cpp` | Phrase DSL, regex compilation, rule validation |
+| `src/parser/regex_parser.*` | Regex backend and compiled rule snapshot |
+| `src/parser/phrase_rules.*` | Phrase DSL, regex compilation, rule validation |
+| `src/parser/device_names.*` | Domain-scoped exact/fuzzy name resolution |
+| `src/parser/speech_text.*` | Text normalization and spoken numbers |
+| `src/ollama/*` | Ollama client and the pending LLM parser declaration |
 | `config/phrases.yaml` | User-editable phrases, aliases, and installation policy |

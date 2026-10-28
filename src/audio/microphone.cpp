@@ -20,13 +20,9 @@ using std::unique_lock;
 
 namespace {
 /**
- * @brief Translate a failing PortAudio status into an application exception.
- *
- * @param[in] error PortAudio return code to inspect.
- * @throws std::runtime_error With PortAudio's error text when error is not paNoError.
- * @note Does not print, close resources, or change capture state on its own.
+ * @brief Throw PortAudio's error text for any status other than paNoError.
  */
-void checkAudio(PaError error) {
+void throwIfError(PaError error) {
     if(error != paNoError) {
         throw runtime_error(Pa_GetErrorText(error));
     }
@@ -61,7 +57,7 @@ void Microphone::capture() {
 }
 
 Microphone::Microphone() {
-    checkAudio(Pa_Initialize());
+    throwIfError(Pa_Initialize());
 
     try {
         const auto device = Pa_GetDefaultInputDevice();
@@ -81,10 +77,10 @@ Microphone::Microphone() {
         input.channelCount = 1;
         input.sampleFormat = paFloat32;
         input.suggestedLatency = info->defaultHighInputLatency;
-        checkAudio(Pa_IsFormatSupported(&input, nullptr, sampleRate));
-        checkAudio(
+        throwIfError(Pa_IsFormatSupported(&input, nullptr, sampleRate));
+        throwIfError(
             Pa_OpenStream(&stream, &input, nullptr, sampleRate, blockSamples, paNoFlag, nullptr, nullptr));
-        checkAudio(Pa_StartStream(stream));
+        throwIfError(Pa_StartStream(stream));
         worker = thread(&Microphone::capture, this);
     } catch(...) {
         if(stream) {
@@ -99,6 +95,7 @@ Microphone::Microphone() {
 Microphone::~Microphone() {
     stopping = true;
 
+    // Abort before joining so a blocked read returns.
     if(stream) {
         Pa_AbortStream(stream);
     }
@@ -116,17 +113,9 @@ Microphone::~Microphone() {
 
 bool Microphone::read(Samples& block, bool& discontinuity) {
     unique_lock<mutex> lock(audioMutex);
-
-    /*
-     * @brief Wake the waiting reader when captured audio or a stored error is available.
-     *
-     * @return True when the captured queue is nonempty or capture has recorded a failure.
-     * @note Evaluates the condition while audioMutex is held; does not consume the queue.
-     */
     ready.wait_for(lock, std::chrono::milliseconds(100),
                    [&] { return !pending.empty() || failure != paNoError; });
-
-    checkAudio(failure);
+    throwIfError(failure);
 
     if(pending.empty()) {
         return false;

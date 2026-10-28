@@ -63,26 +63,20 @@ The discovery and dry-run modes send no control commands and require no Whisper
 model. Dry runs query both states and service availability. Set `HOME_ASSISTANT_TOKEN` in the environment or ignored `.env` file. Optionally
 set `HOME_ASSISTANT_URL` to a full URL including port.
 
-`HomeAssistant::getStates` fetches state; `findAvailableDevices` filters controllable
-entities; `buildCommandContext` returns domain-specific maps; `Commands::resolveEntityId`
-looks up a spoken name using those maps. Friendly-name normalization is shared.
-`Commands::Parser` is the backend interface; `Parser::RegexParser` implements it.
-`WhisperTranscriber::transcribe` returns text only. The application then obtains a
-device snapshot, calls `parser->parse(text, context)`, prints debug output, and
-explicitly calls `executor.execute(command, configuration)`. Parsing cannot post
-commands. Another parser backend can be selected at the composition root without
-changing audio capture or execution.
+The pipeline has three swappable stages: a `Speech::Transcriber` turns audio into
+text, a `Commands::Parser` turns text into one `Commands::Command`, and a
+`Commands::Executor` discovers devices and runs commands. `WhisperTranscriber`,
+`RegexParser`, and `HomeAssistant` are the current implementations, selected in
+`src/app/main.cpp`. Parsing cannot post commands, and the executor validates every
+command independently of the parser that produced it.
 
-`Config::Configuration` owns file reads and transactional hot reload. Parser
-configuration changes are explicit; parsing never reloads files or uses a shared
-global engine. `HomeAssistant` implements `Commands::Executor`: `check` performs
-read-only live-state and service validation; `execute` performs those same checks
-and posts once. Both return structured results, leaving reporting to the app.
-Relative volume amounts are resolved against fresh state and sent through the
-ordinary volume service. Arbitrary conversation requests are rejected.
+`Config::Configuration` owns file reads and transactional hot reload for both the
+parser and the executor. `HomeAssistant::preview` performs read-only live-state and
+service validation; `execute` performs the same checks and posts once. Relative
+volume is resolved against fresh state and sent as `volume_set`.
 
-See [the architecture audit](docs/architecture.md) for the reviewed concerns,
-changes, side-effect boundaries, and remaining limitations.
+See [the architecture notes](docs/architecture.md) for the interfaces and how to
+swap each stage.
 
 ## Parser tests
 
@@ -99,25 +93,22 @@ References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 
 ## Project layout
 
-- `src/app/`: startup, CLI/connection settings, orchestration, and reporting.
-- `src/commands/`: parser/executor contracts and command context/results.
+- `src/app/`: startup, CLI/connection settings, implementation selection, and reporting.
+- `src/commands/`: the command vocabulary, service catalog, and parser/executor interfaces.
 - `src/config/`: bounded YAML decoding, file access, and transactional reload.
-- `src/speech/`: Whisper transcription.
+- `src/speech/`: the transcriber interface and Whisper implementation.
 - `src/audio/`: microphone capture and utterance buffering.
-- `src/parser/`: phrase parsing, YAML decoding, and text/device-name matching.
-- `src/home_assistant/`: HTTP client, device discovery, and control policy.
+- `src/parser/`: the regex parser, phrase DSL, spoken numbers, and device-name matching.
+- `src/home_assistant/`: the Home Assistant executor, discovery, and control policy.
+- `src/ollama/`: Ollama client and the pending LLM parser.
 - `config/phrases.yaml`: editable phrases, aliases, and installation policy.
 - `tests/` and `docs/`: automated checks and supporting documentation.
 
-Small application-only reporting helpers live in `src/app/main.cpp`. Parser implementation
-helpers share `src/parser/detail.hpp`; separate headers remain for shared module
-interfaces and classes with substantial implementations.
-
 ## API documentation
 
-Functions and methods use Doxygen comments for behavior, parameters, return values,
-errors, ownership, and side effects. Public contracts live in headers; private
-helpers and test callbacks are described beside their implementations.
+Every class, type, function, and method has a Doxygen comment. Public contracts live
+in headers; private helpers and test callbacks are described beside their
+implementations.
 
 With Doxygen installed, generate the browsable reference from the repository root:
 

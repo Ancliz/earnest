@@ -1,441 +1,447 @@
 /**
  * @file
- * @brief Domain/capability validation, volume resolution, and AC airflow guards.
+ * @brief Service, capability and AC airflow checks against an explicit device snapshot.
  */
 
 #include "control_policy.hpp"
-#include "services.hpp"
+#include "commands/services.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <map>
 #include <set>
 #include <stdexcept>
 
+using Commands::Command;
+using Commands::Device;
+using Commands::Devices;
 using Commands::json;
+using std::runtime_error;
 using std::string;
+using std::vector;
 
 namespace {
+/**
+ * @brief Home Assistant ClimateEntityFeature bits used by the climate checks.
+ */
+enum ClimateFeature { TargetTemperature = 1, FanMode = 8, TurnOff = 128, TurnOn = 256 };
 
 /**
- * @brief Locate the first object record with a matching entity ID in a supplied snapshot.
- *
- * @param[in] states Entity-state collection to search in iteration order.
- * @param[in] entity Exact entity ID to locate.
- * @return Borrowed pointer into states, or nullptr when absent. Valid only while the
- *         underlying JSON storage remains alive and unchanged.
- * @throws nlohmann::json::exception If an examined entity_id has an incompatible type.
- * @note Performs no HTTP and leaves the snapshot unchanged.
+ * @brief Find a device by entity ID.
+ * @return Borrowed pointer into the snapshot, or nullptr when absent.
  */
-const json* findState(const json& states, const string& entity) {
-    for(const auto& state : states) {
-        if(state.is_object() && state.value("entity_id", string()) == entity) {
-            return &state;
-        }
-    }
-
-    return nullptr;
+const Device* findDevice(const Devices& devices, const string& entity) {
+    const auto found = std::find_if(devices.begin(), devices.end(),
+                                    [&](const Device& device) { return device.entityId == entity; });
+    return found == devices.end() ? nullptr : &*found;
 }
 
 /**
- * @brief Test whether a JSON array contains the supplied string value.
- *
- * @param[in] list Candidate JSON array; other JSON types are treated as nonmembers.
- * @param[in] value String to compare using exact JSON equality.
- * @return True if list is an array containing value, otherwise false.
+ * @brief Whether a device is absent or cannot currently report its state.
  */
-bool member(const json& list, const string& value) {
-    return list.is_array() && std::find(list.begin(), list.end(), value) != list.end();
+bool isUnavailable(const Device* device) {
+    return !device || device->state == "unavailable" || device->state == "unknown";
 }
 
 /**
- * @brief Interpret a climate-zone or positioned-cover snapshot as open or enabled.
- *
- * Climate entities count as enabled for states other than off, unknown, and
- * unavailable. Other entities need a numeric attributes.current_position above
- * zero. A missing snapshot pointer counts as closed.
- *
- * @param[in] state Borrowed entity-state record, or nullptr for an absent entity.
- * @return Whether the supplied snapshot counts as an open zone for airflow checks.
- * @throws nlohmann::json::exception If an inspected typed field is malformed.
- * @note Does not query physical position or infer actual airflow.
+ * @brief Whether a list contains a value.
  */
-bool isOpen(const json* state) {
-    if(!state) {
+bool contains(const vector<string>& list, const string& value) {
+    return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+/**
+ * @brief Whether a device attribute lists a string option, such as an hvac mode.
+ */
+bool listsOption(const json& attributes, const string& key, const json& option) {
+    if(!option.is_string() || !attributes.contains(key) || !attributes[key].is_array()) {
         return false;
     }
 
-    const string status = state->value("state", string());
-    const string entity = state->value("entity_id", string());
-
-    if(entity.compare(0, 8, "climate.") == 0) {
-        return status != "off" && status != "unknown" && status != "unavailable";
-    }
-
-    return state->contains("attributes") && (*state)["attributes"].contains("current_position") &&
-           (*state)["attributes"]["current_position"].is_number() &&
-           (*state)["attributes"]["current_position"].get<double>() > 0;
-}
-
-} // namespace
-
-void validateControlConfiguration(const json& configuration) {
-    if(!configuration.is_object()) {
-        throw std::runtime_error("Control configuration must be an object");
-    }
-
-    if(!configuration.contains("advantage_air")) {
-        return;
-    }
-
-    const auto& policy = configuration.at("advantage_air");
-
-    if(!policy.is_object() || !policy.contains("systems") || !policy["systems"].is_array()) {
-        throw std::runtime_error("advantage_air requires a systems list");
-    }
-
-    std::set<string> entities;
-
-    for(const auto& system : policy["systems"]) {
-        if(!system.is_object() || !system.contains("entity") || !system["entity"].is_string() ||
-           !system.contains("zones") || !system["zones"].is_array() || system["zones"].empty() ||
-           !system.contains("constant_zones") || !system["constant_zones"].is_array() ||
-           system["constant_zones"].empty() || !system.contains("minimum_open_zones") ||
-           !system["minimum_open_zones"].is_number_integer() || !system.contains("verified_preset") ||
-           !system["verified_preset"].is_string()) {
-            throw std::runtime_error(
-                "AdvantageAir systems need an entity, zones, constant_zones, and minimum_open_zones");
-        }
-
-        const string main = system["entity"].get<string>();
-        const int minimum = system["minimum_open_zones"].get<int>();
-
-        if(main.compare(0, 8, "climate.") != 0 || !entities.insert(main).second || minimum < 1 ||
-           minimum > static_cast<int>(system["zones"].size())) {
-            throw std::runtime_error("Invalid AdvantageAir main entity or minimum zone count");
-        }
-
-        for(const auto& zone : system["zones"]) {
-            if(!zone.is_string() || !entities.insert(zone.get<string>()).second) {
-                throw std::runtime_error("AdvantageAir zones must be unique entity IDs");
-            }
-        }
-
-        for(const auto& zone : system["constant_zones"]) {
-            if(!zone.is_string() || !member(system["zones"], zone.get<string>())) {
-                throw std::runtime_error("Every constant zone must be in zones");
-            }
-        }
-    }
+    return std::find(attributes[key].begin(), attributes[key].end(), option) != attributes[key].end();
 }
 
 /**
- * @brief Validate an already resolved service request against explicit snapshots.
- *
- * Rejects conversation delegation and unresolved targets, enforces the shared
- * service-field catalog and required fields, validates numeric/capability details,
- * and applies verified AdvantageAir preset/constant-zone constraints.
- *
- * @param[in] request Concrete endpoint/body request; internal intents must be resolved first.
- * @param[in] states Entity-state array used for all target and airflow checks.
- * @param[in] configuration Structurally validated application control policy.
- * @return Empty string for an accepted request, otherwise its rejection reason.
- * @throws nlohmann::json::exception For malformed inspected fields; prepareCommand()
- *                                  catches these before returning to the executor.
- * @note Does not fetch state, change zones automatically, or send the request.
+ * @brief Whether a zone counts as open for airflow: a climate zone that is on, or a damper above 0%.
  */
-static string validateServiceCommand(const json& request, const json& states, const json& configuration) {
-    if(!request.is_object() || !request.contains("endpoint") || !request["endpoint"].is_string() ||
-       !request.contains("body") || !request["body"].is_object()) {
-        return "Invalid request";
+bool isOpen(const Device* zone) {
+    if(!zone) {
+        return false;
     }
 
-    const string endpoint = request["endpoint"].get<string>();
-    const auto& body = request["body"];
-
-    if(endpoint == "/conversation/process") {
-        return "Conversation requests are not executable commands";
+    if(zone->domain == "climate") {
+        return zone->state != "off" && zone->state != "unknown" && zone->state != "unavailable";
     }
 
-    if(!states.is_array()) {
-        return "Device states must be an array";
+    const json position = zone->attributes.value("current_position", json());
+    return position.is_number() && position.get<double>() > 0;
+}
+
+/**
+ * @brief Whether a command closes its target: switching it off, closing it, or setting 0%.
+ */
+bool isClosing(const Command& command) {
+    return command.service == "turn_off" || command.service == "close_cover" ||
+           command.data.value("hvac_mode", json()) == "off" || command.data.value("position", json()) == 0;
+}
+
+/**
+ * @brief Turn volume_up/volume_down with an amount into volume_set from the speaker's current level.
+ * @return Rejection reason, or empty when resolved or not a relative command.
+ */
+string resolveRelativeVolume(Command& command, const Devices& devices) {
+    const bool relative = command.domain == "media_player" && command.data.contains("amount") &&
+                          (command.service == "volume_up" || command.service == "volume_down");
+
+    if(!relative) {
+        return "";
     }
 
-    if(!body.contains("entity_id") || !body["entity_id"].is_string()) {
-        return "Choose a device first";
+    const json amount = command.data["amount"];
+
+    if(command.data.size() != 1 || !amount.is_number()) {
+        return "Invalid relative-volume command";
     }
 
-    const string entity = body["entity_id"].get<string>();
-    const auto* state = findState(states, entity);
+    const double change = amount.get<double>();
+    const Device* speaker = findDevice(devices, command.entity);
 
-    if(!state) {
-        return "Device no longer exists: " + entity;
+    if(!std::isfinite(change) || change < 0 || change > 1 || !speaker) {
+        return "Cannot resolve relative-volume command";
     }
 
-    const string status = state->value("state", string());
+    const json current = speaker->attributes.value("volume_level", json());
 
-    if(status == "unavailable" || status == "unknown") {
-        return "Device is unavailable: " + entity;
+    if(!current.is_number()) {
+        return "Current volume is unavailable";
     }
 
-    const auto& attributes = state->at("attributes");
-    const string domain = entity.substr(0, entity.find('.'));
-    const string expected = "/services/" + domain + "/";
+    const double level = current.get<double>();
 
-    if(endpoint.compare(0, expected.size(), expected) != 0) {
-        return "Service domain does not match the device";
+    if(!std::isfinite(level) || level < 0 || level > 1) {
+        return "Current volume is invalid";
     }
 
-    const string service = endpoint.substr(expected.size());
-    const auto* definition = HomeServices::find(domain, service);
+    const double target = level + (command.service == "volume_up" ? change : -change);
+    command.service = "volume_set";
+    command.data = {{"volume_level", std::clamp(target, 0.0, 1.0)}};
+    return "";
+}
 
-    if(!definition) {
-        return "Unsupported service for device domain";
-    }
-
-    for(const auto& field : body.items()) {
-        if(field.key() != "entity_id" && !definition->fields.count(field.key())) {
+/**
+ * @brief Check data fields against the service catalog and numeric ranges.
+ * @return Rejection reason, or empty when the fields are acceptable.
+ */
+string checkFields(const Command& command, const Commands::ServiceFields& fields) {
+    for(const auto& field : command.data.items()) {
+        if(!fields.allowed.count(field.key())) {
             return "Unexpected service field: " + field.key();
         }
     }
 
-    for(const auto& field : definition->required) {
-        if(!body.contains(field)) {
+    for(const auto& field : fields.required) {
+        if(!command.data.contains(field)) {
             return "Missing service field: " + field;
         }
     }
 
+    // Levels are 0..1 and percentages 0..100; temperature limits come from the device instead.
     for(const string field : {"volume_level", "brightness_pct", "percentage", "position", "temperature"}) {
-        if(!body.contains(field)) {
+        if(!command.data.contains(field)) {
             continue;
         }
 
-        if(!body[field].is_number() || !std::isfinite(body[field].get<double>())) {
-            return "Invalid numeric field: " + field;
-        }
+        const json& value = command.data.at(field);
 
-        const double value = body[field].get<double>();
-        if(field == "temperature") {
-            continue; // The device supplies its own temperature range and units below.
+        if(!value.is_number() || !std::isfinite(value.get<double>())) {
+            return "Invalid numeric field: " + field;
         }
 
         const double maximum = field == "volume_level" ? 1 : 100;
 
-        if(value < 0 || value > maximum) {
+        if(field != "temperature" && (value.get<double>() < 0 || value.get<double>() > maximum)) {
             return "Value is out of range: " + field;
         }
     }
 
-    if(service == "volume_set" && !body.contains("volume_level")) {
-        return "Missing volume_level";
-    }
-
-    if(service == "volume_mute" &&
-       (!body.contains("is_volume_muted") || !body["is_volume_muted"].is_boolean())) {
+    if(command.service == "volume_mute" && !command.data.at("is_volume_muted").is_boolean()) {
         return "Missing mute boolean";
     }
 
-    if(domain == "climate") {
-        const auto supported = attributes.value("supported_features", 0);
+    return "";
+}
 
-        if(service == "turn_on" && !(supported & 256)) {
-            return "This climate entity cannot be turned on";
+/**
+ * @brief Check a climate command against the entity's supported features, limits and modes.
+ * @return Rejection reason, or empty when supported.
+ */
+string checkClimate(const Command& command, const json& attributes) {
+    const int features = attributes.value("supported_features", 0);
+    const string& service = command.service;
+
+    if(service == "turn_on" && !(features & TurnOn)) {
+        return "This climate entity cannot be turned on";
+    }
+
+    if(service == "turn_off" && !(features & TurnOff)) {
+        return "This climate entity cannot be turned off";
+    }
+
+    if(service == "set_temperature") {
+        if(!(features & TargetTemperature)) {
+            return "This climate entity does not support a single temperature setpoint in its current preset";
         }
 
-        if(service == "turn_off" && !(supported & 128)) {
-            return "This climate entity cannot be turned off";
+        if(!attributes.contains("min_temp") || !attributes.contains("max_temp")) {
+            return "Temperature limits are unavailable";
         }
 
-        if(service == "set_temperature") {
-            if(!(supported & 1)) {
-                return "This climate entity does not support a single temperature setpoint in its current "
-                       "preset";
-            }
+        const double value = command.data.at("temperature").get<double>();
+        const double min = attributes["min_temp"].get<double>();
+        const double max = attributes["max_temp"].get<double>();
+        const double step = attributes.value("target_temp_step", 1.0);
+        const double steps = (value - min) / step;
 
-            if(!body.contains("temperature") || !attributes.contains("min_temp") ||
-               !attributes.contains("max_temp")) {
-                return "Temperature limits are unavailable";
-            }
-
-            const double value = body["temperature"].get<double>();
-            const double min = attributes["min_temp"].get<double>();
-            const double max = attributes["max_temp"].get<double>();
-            const double step = attributes.value("target_temp_step", 1.0);
-
-            if(!std::isfinite(min) || !std::isfinite(max) || !std::isfinite(step) || min > max ||
-               value < min || value > max || step <= 0 ||
-               std::abs((value - min) / step - std::round((value - min) / step)) > 1e-6) {
-                return "Temperature is outside the device range or step";
-            }
-        }
-
-        for(const auto& pair :
-            {std::make_pair("hvac_mode", "hvac_modes"), std::make_pair("fan_mode", "fan_modes")}) {
-            if(service != string("set_") + pair.first) {
-                continue;
-            }
-
-            if(!body.contains(pair.first) || !body[pair.first].is_string() ||
-               !attributes.contains(pair.second) ||
-               !member(attributes[pair.second], body[pair.first].get<string>())) {
-                return "Unsupported climate mode";
-            }
-        }
-
-        if(service == "set_fan_mode" && !(supported & 8)) {
-            return "Fan speed is not supported by this climate entity";
+        if(!std::isfinite(min) || !std::isfinite(max) || !std::isfinite(step) || min > max || value < min ||
+           value > max || step <= 0 || std::abs(steps - std::round(steps)) > 1e-6) {
+            return "Temperature is outside the device range or step";
         }
     }
 
-    if(domain == "select" &&
-       (!body.contains("option") || !body["option"].is_string() || !attributes.contains("options") ||
-        !member(attributes["options"], body["option"].get<string>()))) {
-        return "Unsupported select option";
+    if((service == "set_hvac_mode" && !listsOption(attributes, "hvac_modes", command.data.at("hvac_mode"))) ||
+       (service == "set_fan_mode" && !listsOption(attributes, "fan_modes", command.data.at("fan_mode")))) {
+        return "Unsupported climate mode";
     }
 
-    if(domain == "cover" && attributes.value("device_class", string()) == "damper") {
-        if(body.contains("position") && std::fmod(body["position"].get<double>(), 5) != 0) {
-            return "Damper position must use 5 percent increments";
+    if(service == "set_fan_mode" && !(features & FanMode)) {
+        return "Fan speed is not supported by this climate entity";
+    }
+
+    return "";
+}
+
+/**
+ * @brief Apply the verified AdvantageAir policy to a climate or damper command.
+ *
+ * Starting the main unit, or closing a zone while it runs, must leave at least the minimum
+ * number of zones, including every constant zone, open. Turning the main unit off is always
+ * allowed.
+ *
+ * @return Rejection reason, or empty when the airflow stays within policy.
+ */
+string checkAirflow(const Command& command, const Devices& devices, const AirflowPolicy& policy) {
+    const auto system = std::find_if(policy.begin(), policy.end(), [&](const AirflowSystem& candidate) {
+        return candidate.entity == command.entity || contains(candidate.zones, command.entity);
+    });
+
+    if(system == policy.end()) {
+        return "No verified airflow policy is configured for this climate entity";
+    }
+
+    const Device* mainUnit = findDevice(devices, system->entity);
+
+    if(isUnavailable(mainUnit)) {
+        return "AC system state is unavailable";
+    }
+
+    const bool targetsMainUnit = command.entity == system->entity;
+    const bool running = mainUnit->state != "off";
+    const bool closing = isClosing(command);
+    const bool starting = command.service == "turn_on" || (command.service == "set_hvac_mode" && !closing) ||
+                          (running && command.service == "set_fan_mode");
+
+    // Only starting the main unit, or closing a zone while it runs, can starve the airflow.
+    if(targetsMainUnit ? !starting : !(running && closing)) {
+        return "";
+    }
+
+    if(mainUnit->attributes.value("preset_mode", string()) != system->verifiedPreset) {
+        return "AC preset changed; review the verified constant-zone policy before changing airflow";
+    }
+
+    unsigned openZones = 0;
+
+    // Count zones that stay open after this command, failing closed on any unknown zone.
+    for(const auto& zone : system->zones) {
+        const Device* state = findDevice(devices, zone);
+
+        if(isUnavailable(state)) {
+            return "Cannot verify every AC zone state";
+        }
+
+        if(isOpen(state) && !(zone == command.entity && closing)) {
+            ++openZones;
         }
     }
 
-    for(const auto& system :
-        configuration.value("advantage_air", json::object()).value("systems", json::array())) {
-        if(domain == "select" && entity == system.value("myzone_entity", string())) {
-            return "Change MyZone on the controller; voice does not change the installation's constant-zone "
-                   "selection";
-        }
+    if(openZones < system->minimumOpenZones) {
+        return "Command would leave too few AC zones open";
     }
 
-    // Require an explicit, verified installation policy for every climate/damper command.
-    // This avoids treating a zone's heat_cool state as the compressor's operating mode.
-    if(domain == "climate" || (domain == "cover" && attributes.value("device_class", string()) == "damper")) {
-        const json systems =
-            configuration.value("advantage_air", json::object()).value("systems", json::array());
-        bool known = false;
-
-        for(const auto& system : systems) {
-            const string main = system["entity"].get<string>();
-            const bool mainTarget = entity == main;
-
-            if(!mainTarget && !member(system["zones"], entity)) {
-                continue;
-            }
-
-            known = true;
-            const auto* master = findState(states, main);
-
-            if(!master || master->value("state", string()) == "unavailable" ||
-               master->value("state", string()) == "unknown") {
-                return "AC system state is unavailable";
-            }
-
-            const bool running = master->value("state", string()) != "off";
-            const bool closing = service == "turn_off" || service == "close_cover" ||
-                                 (body.contains("hvac_mode") && body["hvac_mode"] == "off") ||
-                                 (body.contains("position") && body["position"] == 0);
-            const bool starting =
-                mainTarget && (service == "turn_on" || (service == "set_hvac_mode" && !closing) ||
-                               (running && service == "set_fan_mode"));
-
-            if(mainTarget && closing) {
-                return "";
-            }
-
-            if(!starting && !(running && !mainTarget && closing)) {
-                break;
-            }
-
-            if(master->at("attributes").value("preset_mode", string()) !=
-               system.value("verified_preset", string())) {
-                return "AC preset changed; review the verified constant-zone policy before changing airflow";
-            }
-
-            unsigned open = 0;
-
-            for(const auto& zone : system["zones"]) {
-                const string id = zone.get<string>();
-                const auto* current = findState(states, id);
-
-                if(!current || current->value("state", string()) == "unavailable" ||
-                   current->value("state", string()) == "unknown") {
-                    return "Cannot verify every AC zone state";
-                }
-
-                if(isOpen(current) && !(id == entity && closing)) {
-                    ++open;
-                }
-            }
-
-            if(open < system["minimum_open_zones"].get<unsigned>()) {
-                return "Command would leave too few AC zones open";
-            }
-
-            for(const auto& zone : system["constant_zones"]) {
-                const string id = zone.get<string>();
-
-                if(!isOpen(findState(states, id)) || (id == entity && closing)) {
-                    return "Keep the installer-configured constant zone open before running the AC";
-                }
-            }
-        }
-
-        if(!known) {
-            return "No verified airflow policy is configured for this climate entity";
+    for(const auto& zone : system->constantZones) {
+        if(!isOpen(findDevice(devices, zone)) || (zone == command.entity && closing)) {
+            return "Keep the installer-configured constant zone open before running the AC";
         }
     }
 
     return "";
 }
 
-Commands::ExecutionResult prepareCommand(const json& request, const json& states, const json& configuration) {
-    try {
-        validateControlConfiguration(configuration);
-        json resolved = request;
-
-        if(request.is_object() &&
-           request.value("endpoint", string()) == "/commands/media_player/adjust_volume") {
-            const auto& body = request.at("body");
-
-            if(!body.is_object() || body.size() != 2 || !body.contains("entity_id") ||
-               !body["entity_id"].is_string() || !body.contains("amount") || !body["amount"].is_number()) {
-                return {false, "Invalid relative-volume command"};
-            }
-
-            const string entity = body["entity_id"].get<string>();
-            const double amount = body["amount"].get<double>();
-            const auto* state = findState(states, entity);
-
-            if(entity.compare(0, 13, "media_player.") != 0 || !std::isfinite(amount) ||
-               std::abs(amount) > 1 || !state || !state->contains("attributes") ||
-               !state->at("attributes").is_object()) {
-                return {false, "Cannot resolve relative-volume command"};
-            }
-
-            const auto& attributes = state->at("attributes");
-
-            if(!attributes.contains("volume_level") || !attributes["volume_level"].is_number()) {
-                return {false, "Current volume is unavailable"};
-            }
-
-            const double current = attributes["volume_level"].get<double>();
-
-            if(!std::isfinite(current) || current < 0 || current > 1) {
-                return {false, "Current volume is invalid"};
-            }
-
-            resolved = {
-                {"endpoint", "/services/media_player/volume_set"},
-                {"body", {{"entity_id", entity}, {"volume_level", std::clamp(current + amount, 0.0, 1.0)}}}};
-        }
-
-        const string problem = validateServiceCommand(resolved, states, configuration);
-        return {problem.empty(), problem, std::move(resolved)};
-    } catch(const std::exception& error) {
-        return {false, string("Invalid command, state, or policy: ") + error.what()};
+/**
+ * @brief Validate a command whose internal intents are already resolved.
+ * @return Rejection reason, or empty when accepted.
+ */
+string checkCommand(const Command& command, const Devices& devices, const AirflowPolicy& policy) {
+    if(!command.data.is_object()) {
+        return "Invalid request";
     }
+
+    if(command.entity.empty()) {
+        return "Choose a device first";
+    }
+
+    const Device* device = findDevice(devices, command.entity);
+
+    if(!device) {
+        return "Device no longer exists: " + command.entity;
+    }
+
+    if(isUnavailable(device)) {
+        return "Device is unavailable: " + command.entity;
+    }
+
+    if(device->domain != command.domain) {
+        return "Service domain does not match the device";
+    }
+
+    const auto* fields = Commands::findService(command.domain, command.service);
+
+    if(!fields) {
+        return "Unsupported service for device domain";
+    }
+
+    string problem = checkFields(command, *fields);
+
+    if(problem.empty() && command.domain == "climate") {
+        problem = checkClimate(command, device->attributes);
+    }
+
+    if(!problem.empty()) {
+        return problem;
+    }
+
+    if(command.domain == "select" && !listsOption(device->attributes, "options", command.data.at("option"))) {
+        return "Unsupported select option";
+    }
+
+    const bool isDamper =
+        command.domain == "cover" && device->attributes.value("device_class", string()) == "damper";
+
+    if(isDamper && command.data.contains("position") &&
+       std::fmod(command.data["position"].get<double>(), 5) != 0) {
+        return "Damper position must use 5 percent increments";
+    }
+
+    const bool changesMyZone = command.domain == "select" &&
+                               std::any_of(policy.begin(), policy.end(), [&](const AirflowSystem& system) {
+                                   return system.myZoneEntity == command.entity;
+                               });
+
+    if(changesMyZone) {
+        return "Change MyZone on the controller; voice does not change the installation's constant-zone "
+               "selection";
+    }
+
+    // Every climate and damper command needs a verified installation policy, so a zone's
+    // heat_cool state is never mistaken for the compressor's mode.
+    if(command.domain == "climate" || isDamper) {
+        return checkAirflow(command, devices, policy);
+    }
+
+    return "";
 }
 
-string validateCommand(const json& request, const json& states, const json& configuration) {
-    return prepareCommand(request, states, configuration).error;
+/**
+ * @brief Whether a policy entry has a nonempty list under a key.
+ */
+bool hasNonemptyList(const json& entry, const char* key) {
+    return entry.contains(key) && entry[key].is_array() && !entry[key].empty();
+}
+} // namespace
+
+AirflowPolicy readAirflowPolicy(const json& configuration) {
+    if(!configuration.is_object()) {
+        throw runtime_error("Control configuration must be an object");
+    }
+
+    if(!configuration.contains("advantage_air")) {
+        return {};
+    }
+
+    const json& section = configuration["advantage_air"];
+
+    if(!section.is_object() || !section.contains("systems") || !section["systems"].is_array()) {
+        throw runtime_error("advantage_air requires a systems list");
+    }
+
+    AirflowPolicy policy;
+    std::set<string> entities;
+
+    for(const auto& entry : section["systems"]) {
+        const bool complete = entry.is_object() && entry.value("entity", json()).is_string() &&
+                              hasNonemptyList(entry, "zones") && hasNonemptyList(entry, "constant_zones") &&
+                              entry.value("minimum_open_zones", json()).is_number_integer() &&
+                              entry.value("verified_preset", json()).is_string();
+
+        if(!complete) {
+            throw runtime_error(
+                "AdvantageAir systems need an entity, zones, constant_zones, and minimum_open_zones");
+        }
+
+        AirflowSystem system;
+        system.entity = entry["entity"].get<string>();
+        system.myZoneEntity = entry.value("myzone_entity", string());
+        system.verifiedPreset = entry["verified_preset"].get<string>();
+        const int minimum = entry["minimum_open_zones"].get<int>();
+
+        if(system.entity.compare(0, 8, "climate.") != 0 || !entities.insert(system.entity).second ||
+           minimum < 1 || minimum > static_cast<int>(entry["zones"].size())) {
+            throw runtime_error("Invalid AdvantageAir main entity or minimum zone count");
+        }
+
+        system.minimumOpenZones = static_cast<unsigned>(minimum);
+
+        for(const auto& zone : entry["zones"]) {
+            if(!zone.is_string() || !entities.insert(zone.get<string>()).second) {
+                throw runtime_error("AdvantageAir zones must be unique entity IDs");
+            }
+
+            system.zones.push_back(zone.get<string>());
+        }
+
+        for(const auto& zone : entry["constant_zones"]) {
+            if(!zone.is_string() || !contains(system.zones, zone.get<string>())) {
+                throw runtime_error("Every constant zone must be in zones");
+            }
+
+            system.constantZones.push_back(zone.get<string>());
+        }
+
+        policy.push_back(std::move(system));
+    }
+
+    return policy;
+}
+
+Commands::Result validateCommand(Command command, const Devices& devices, const AirflowPolicy& policy) {
+    try {
+        string problem = resolveRelativeVolume(command, devices);
+
+        if(problem.empty()) {
+            problem = checkCommand(command, devices, policy);
+        }
+
+        return {problem.empty(), problem, std::move(command)};
+    } catch(const std::exception& error) {
+        return {false, string("Invalid command or device state: ") + error.what(), command};
+    }
 }

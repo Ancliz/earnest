@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief HTTP client contract for Ollama chat and tool-calling inference.
+ * @brief HTTP client for Ollama chat and tool-calling inference.
  */
 
 #pragma once
@@ -9,46 +9,36 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
-using std::string;
 using nlohmann::json;
+using std::string;
 
 /**
- * @brief Own the connection and model selection used for Ollama inference.
+ * @brief Sends chat requests to one Ollama server and model.
  *
- * This client transports chat messages and tool definitions. A command-parser
- * adapter interprets the returned model response; this class does not resolve
- * Home Assistant entities, validate control policy, or execute tools.
- *
- * @note Declarations only; implement these operations in ollama.cpp.
+ * Transport only: interpreting replies and executing tool calls belong to the caller.
  */
-class Ollama {
+class OllamaClient {
+
+    /// Connection to the Ollama server.
     httplib::Client client;
+
+    /// Model name and tag sent with each request.
     string model;
 
 public:
     /**
-     * @brief Configure the inference endpoint and model without making a request.
-     *
-     * @param[in] url Ollama server origin, including scheme and optional port.
-     *                Use the server's LAN address when it runs on another computer.
-     * @param[in] model Installed model name/tag to include in inference requests.
-     * @note The implementation should configure client timeouts here. It should
-     *       not download a model, start inference, or contact Home Assistant.
+     * @brief Configure the endpoint and model without making a request.
+     * @param[in] url Server origin, including scheme and port.
+     * @param[in] model Installed model name and tag.
      */
-    explicit Ollama(const string& url = "http://192.168.4.238:11434",
-                    const string& model = "qwen3.5:4b");
+    explicit OllamaClient(const string& url = "http://192.168.4.238:11434", const string& model = "qwen3.5:4b");
 
     /**
-     * @brief Submit messages and optional tools to Ollama's chat endpoint.
-     *
-     * @param[in] messages Chat-message array containing roles and message content.
-     * @param[in] tools Function-tool definitions available to the model; an empty
-     *                  array requests a conversation without tools.
-     * @return Full decoded response envelope, including message content or tool calls.
-     * @throws std::runtime_error The implementation should report transport failures,
-     *                           non-success HTTP statuses, and invalid responses.
-     * @note Implement a non-streaming request so the caller receives one JSON result.
-     *       This performs inference only; returned tool calls must not be executed here.
+     * @brief Submit messages and optional tools to the chat endpoint.
+     * @param[in] messages Chat messages with roles and content.
+     * @param[in] tools Function-tool definitions; empty for a plain conversation.
+     * @return Decoded response, including message content or tool calls.
+     * @throws std::runtime_error For transport failures, non-200 statuses, or invalid JSON.
      */
     json chat(const json& messages, const json& tools = json::array());
 };

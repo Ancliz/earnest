@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Energy-based segmentation and discard-event reporting contracts.
+ * @brief Energy-based utterance segmentation.
  */
 
 #pragma once
@@ -9,79 +9,83 @@
 #include <deque>
 #include <optional>
 
+/**
+ * @brief Groups 100 ms audio blocks into utterances separated by silence.
+ *
+ * A block is speech when its RMS reaches the threshold. An utterance needs at least two speech
+ * blocks, keeps up to two quiet lead-in blocks, and ends after the configured silence. Audio
+ * after a capture gap or beyond 15 seconds is discarded until the next full silence.
+ */
 class UtteranceBuffer {
 public:
-    enum class Event { None, Discontinuity, TooLong };
+    /**
+     * @brief Why the latest append() discarded audio.
+     */
+    enum class Event {
+        /// Nothing was discarded.
+        None,
+        /// Capture lost audio, so the incomplete utterance was dropped.
+        Discontinuity,
+        /// The utterance passed 15 seconds and was dropped.
+        TooLong
+    };
 
 private:
+    /// Samples of the utterance in progress.
     Audio::Samples audio;
+
+    /// Quiet blocks kept so the start of speech is not clipped.
     std::deque<Audio::Samples> preroll;
+
+    /// Speech blocks in the current utterance.
     int voicedBlocks = 0;
-    int silentBlocks = 0;
-    int silenceBlocks;
+
+    /// Consecutive quiet blocks at the end of the buffered audio.
+    int trailingSilentBlocks = 0;
+    
+    /// Quiet blocks that end an utterance.
+    int blocksToEndUtterance;
+
+    /// RMS level treated as speech.
     float threshold;
+
+    /// Whether audio is ignored until the next full silence.
     bool discardUntilSilence = false;
+    
+    /// Discard reported by the latest append().
+    Event lastEvent = Event::None;
 
     /**
-     * @brief Reset accumulated audio, preroll, and speech/silence block counters.
-     *
-     * Does not change the discard-until-silence state, configured thresholds, or last
-     * append event; callers manage those state transitions explicitly.
+     * @brief Drop buffered audio and block counts; discard mode and the last event are kept.
      */
-    void clear();
-
-    Event lastEvent = Event::None;
+    void reset();
 
 public:
     /**
-     * @brief Configure energy-based utterance segmentation without opening an audio device.
-     *
-     * Rounds the requested silence duration up to whole 100 ms blocks. Detection
-     * requires at least two voiced blocks and retains up to two leading quiet blocks.
-     *
-     * @param[in] threshold Finite RMS speech threshold strictly between zero and one.
-     * @param[in] silenceMs Silence boundary duration in milliseconds, within 200..3000.
-     * @throws std::invalid_argument For an invalid threshold or silence duration.
-     * @note Expects subsequent append() calls to represent 100 ms audio blocks.
+     * @brief Configure segmentation.
+     * @param[in] threshold RMS speech level, strictly between 0 and 1.
+     * @param[in] silenceMs Silence that ends an utterance, 200..3000 ms, rounded up to whole blocks.
+     * @throws std::invalid_argument For an out-of-range threshold or silence.
      */
     UtteranceBuffer(float threshold, int silenceMs);
 
     /**
-     * @brief Inspect the discard event reported by the most recent append() call.
-     *
-     * @return None, Discontinuity, or TooLong. Reading does not consume the event;
-     *         append() resets it before processing its next block.
-     * @note clear() and finish() do not reset the last append event.
+     * @brief Discard reported by the latest append().
      */
     Event event() const {
         return lastEvent;
     }
 
     /**
-     * @brief Complete buffered speech, including an explicit shutdown flush.
-     *
-     * Emits owned audio only after at least two voiced blocks and only when the
-     * buffer is not discarding incomplete speech. Always clears accumulated audio,
-     * preroll, and counters; a repeated call therefore cannot emit the same audio.
-     *
-     * @return Completed samples, or no value for silence, brief noise, or discarded audio.
-     * @note Moves audio out of this instance; does not transcribe, log, or clear an
-     *       outstanding discard-until-silence condition.
+     * @brief Emit the buffered utterance now, as on shutdown, and clear the buffer.
+     * @return Utterance, or nullopt for silence, brief noise, or discarded audio.
      */
     std::optional<Audio::Samples> finish();
+
     /**
-     * @brief Append one audio block and emit an utterance when its silence boundary arrives.
-     *
-     * Computes RMS energy, preserves leading/trailing audio, and tracks voiced and
-     * silent block counts. A discontinuity discards incomplete input; a 15-second
-     * utterance also enters discard mode. Both require a new silence boundary before
-     * speech can be accepted again. The caller can inspect event() for diagnostics.
-     *
-     * @param[in] block Next nominal 100 ms mono float32 block; copied into owned buffers.
+     * @brief Add one 100 ms block.
      * @param[in] discontinuity Whether capture lost audio before this block.
-     * @return Completed utterance at a silence boundary, or no value while accumulating,
-     *         filtering brief noise, or recovering from discarded input.
-     * @note Mutates buffering state only. Does not read devices, print, or run inference.
+     * @return The completed utterance when this block ends it, otherwise nullopt.
      */
     std::optional<Audio::Samples> append(const Audio::Samples& block, bool discontinuity);
 };

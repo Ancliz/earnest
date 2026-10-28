@@ -1,9 +1,13 @@
-# Parser regression suite
+# Regression suites
 
-The original speaker phrase variants and JSON request format are covered by
-`parser_test.cpp`. Device discovery/ambiguity is covered by `device_aliases_test.cpp`.
-YAML loading, user phrases, hot reload, domain resolution, and AdvantageAir checks
-are covered by `phrase_config_test.cpp`.
+| Suite | Covers |
+| --- | --- |
+| `parser_test.cpp` | Speaker phrase variants, spoken numbers, device names, aliases and ambiguity |
+| `control_policy_test.cpp` | Discovery, multi-domain parsing, command validation, and AdvantageAir checks |
+| `configuration_test.cpp` | YAML limits, hot reload, rejected edits, and rollback across consumers |
+| `home_assistant_test.cpp` | Preview and execution against a local mock Home Assistant |
+| `utterance_buffer_test.cpp` | Utterance segmentation and discard recovery |
+| `settings_test.cpp` | Command-line modes and connection settings |
 
 See [the phrase API/configuration guide](../docs/phrases.md) and
 [the AdvantageAir research and policy](../docs/advantage_air.md).

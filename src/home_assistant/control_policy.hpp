@@ -1,58 +1,57 @@
 /**
  * @file
- * @brief Pure command resolution and installation-policy validation contracts.
+ * @brief Pure command validation and the AdvantageAir airflow policy.
  */
 
 #pragma once
 
 #include "commands/command.hpp"
+#include <vector>
+
+using namespace Commands;
 
 /**
- * @brief Resolve internal intents and validate a request against supplied state and policy.
- *
- * Validates control-policy structure, resolves relative media volume using a finite
- * current level and a signed delta within -1..1, and clamps the resulting level to
- * 0..1. Then checks target availability, domain/service/field compatibility, device
- * capabilities, temperature limits/steps, selector options, and AC airflow rules.
- * Arbitrary conversation requests are rejected independently of parser behavior.
- *
- * @param[in] request Proposed service command or internal relative-volume intent.
- * @param[in] states Caller-supplied entity-state snapshot; no refresh occurs here.
- * @param[in] configuration Installation policy used to authorize climate/airflow changes.
- * @return Success with a resolved request, or failure with an explanatory error.
- *         Caught validation/data exceptions are converted to failure results.
- * @note Pure with respect to caller data and external systems: no HTTP, logging,
- *       mutation of input snapshots, or device control.
+ * @brief One ducted AdvantageAir system as verified on site (see docs/advantage_air.md).
  */
-Commands::ExecutionResult prepareCommand(const Commands::json& request, const Commands::json& states,
-                                         const Commands::json& configuration);
+struct AirflowSystem {
+    /// Main climate entity that runs the compressor.
+    std::string entity;
+
+    /// MyZone select entity, which voice must never change; empty when not configured.
+    std::string myZoneEntity;
+
+    /// Every zone's climate entity.
+    std::vector<std::string> zones;
+
+    /// Zones the installer requires open whenever the system runs.
+    std::vector<std::string> constantZones;
+
+    /// Fewest zones that may be open while the system runs.
+    unsigned minimumOpenZones = 1;
+    
+    /// Preset under which the constant-zone policy was verified.
+    std::string verifiedPreset;
+};
+
 /**
- * @brief Return only the rejection reason from prepareCommand().
- *
- * Resolves internal intents and performs the same snapshot-based validation, but
- * discards the resolved service request. Use prepareCommand() when that request
- * is needed for preview or execution.
- *
- * @param[in] request Proposed command or internal intent.
- * @param[in] states Explicit state snapshot to validate against.
- * @param[in] configuration Explicit installation/control policy snapshot.
- * @return Empty string when permitted, otherwise the validation failure explanation.
- * @note Performs no external operations and does not refresh stale state.
+ * @brief Every verified system; climate and damper commands outside them are rejected.
  */
-std::string validateCommand(const Commands::json& request, const Commands::json& states,
-                            const Commands::json& configuration);
+using AirflowPolicy = std::vector<AirflowSystem>;
+
 /**
- * @brief Validate the structural consistency of configured AdvantageAir systems.
- *
- * Requires an object configuration. When advantage_air is present, checks its
- * systems array, main-entity uniqueness, nonempty unique zones, constant-zone
- * membership, verified-preset string, and a feasible minimum-open-zone count.
- * An absent AdvantageAir section is valid configuration; command checks later
- * reject climate/airflow actions without a matching verified system policy.
- *
- * @param[in] configuration Decoded application configuration; not modified.
- * @throws std::runtime_error If required policy fields or structural constraints fail.
- * @throws nlohmann::json::exception If a policy value cannot be converted as required.
- * @note Checks configuration only, not physical airflow, device existence, or live state.
+ * @brief Read the advantage_air section of a configuration.
+ * @return Verified systems; empty when the section is absent.
+ * @throws std::runtime_error If the configuration or section is malformed.
  */
-void validateControlConfiguration(const Commands::json& configuration);
+AirflowPolicy readAirflowPolicy(const json& configuration);
+
+/**
+ * @brief Resolve and validate a command against a device snapshot and the airflow policy.
+ *
+ * Converts relative volume into volume_set from the speaker's current level, then checks the
+ * target, catalog fields, numeric ranges, device capabilities, temperature limits, selector
+ * options, and AC airflow rules. Trusts nothing about the parser that produced the command.
+ *
+ * @return Success with the resolved command, or the rejection reason. Never throws.
+ */
+Result validateCommand(Command command, const Devices& devices, const AirflowPolicy& policy);

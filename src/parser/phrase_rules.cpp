@@ -1,34 +1,35 @@
 /**
  * @file
- * @brief Phrase DSL translation and validation of compiled command rules.
+ * @brief Phrase DSL compilation and validation of configured command rules.
  */
 
-#include "detail.hpp"
-#include "home_assistant/services.hpp"
+#include "phrase_rules.hpp"
+#include "speech_text.hpp"
+#include "commands/services.hpp"
 
 #include <cctype>
 #include <set>
 #include <stdexcept>
 
-namespace Parser::Detail {
+namespace Grammar {
+using std::regex;
+using std::runtime_error;
 using std::size_t;
 
+namespace {
 /**
- * @brief Translate phrase DSL text into a regex source while assigning capture indexes.
+ * @brief Translate phrase DSL text into regex source, numbering slot captures as they appear.
  *
- * Named slots become lazy captures, optional sections become noncapturing groups,
- * and alternatives retain their grouping without changing slot numbering. Literal
- * metacharacters are escaped and text bytes are lowercased. The caller compiles
- * the returned source and enforces the top-level phrase length limit.
+ * {slot} becomes a lazy capture, [optional words] a noncapturing optional group, and (a|b) a
+ * noncapturing alternative. Literal text is lowercased and regex metacharacters are escaped.
  *
- * @param[in] phrase DSL source, or an optional-section substring during recursion.
- * @param[in,out] slots Named-slot map extended as captures are encountered.
- * @return Regex source string; anchors are supplied by full-match usage.
- * @throws std::runtime_error For unknown/repeated slots or malformed optional sections.
- * @note On failure, slots may contain captures visited before the error; callers use
- *       a candidate map and do not expose partially compiled patterns.
+ * @param[in] phrase DSL text, or an optional section during recursion.
+ * @param[in,out] slots Slot capture indexes, extended as slots are found.
+ * @throws std::runtime_error For unknown or repeated slots and malformed optional sections.
  */
-string compilePhrase(const string& phrase, std::map<string, int>& slots) {
+string translatePhrase(const string& phrase, std::map<string, int>& slots) {
+    static const std::set<string> allowedSlots = {"device",      "volume", "percent",
+                                                  "temperature", "mode",   "option"};
     string result;
 
     for(size_t i = 0; i < phrase.size(); ++i) {
@@ -38,15 +39,13 @@ string compilePhrase(const string& phrase, std::map<string, int>& slots) {
             const auto end = phrase.find('}', i);
 
             if(end == string::npos) {
-                throw std::runtime_error("Unclosed phrase slot");
+                throw runtime_error("Unclosed phrase slot");
             }
 
             const string slot = phrase.substr(i + 1, end - i - 1);
-            static const std::set<string> allowed = {"device",      "volume", "percent",
-                                                     "temperature", "mode",   "option"};
 
-            if(!allowed.count(slot) || slots.count(slot)) {
-                throw std::runtime_error("Unknown or repeated slot: " + slot);
+            if(!allowedSlots.count(slot) || slots.count(slot)) {
+                throw runtime_error("Unknown or repeated slot: " + slot);
             }
 
             slots[slot] = static_cast<int>(slots.size() + 1);
@@ -56,12 +55,13 @@ string compilePhrase(const string& phrase, std::map<string, int>& slots) {
             const auto end = phrase.find(']', i);
 
             if(end == string::npos || phrase.substr(i + 1, end - i - 1).find('{') != string::npos) {
-                throw std::runtime_error("Optional phrase words need a closing ] and cannot contain slots");
+                throw runtime_error("Optional phrase words need a closing ] and cannot contain slots");
             }
 
             std::map<string, int> unused;
-            string optional = compilePhrase(phrase.substr(i + 1, end - i - 1), unused);
+            string optional = translatePhrase(phrase.substr(i + 1, end - i - 1), unused);
 
+            // Move the separating space inside the optional group so "[the] x" also matches "x".
             if(end + 1 < phrase.size() && phrase[end + 1] == ' ') {
                 optional += ' ';
                 i = end + 1;
@@ -91,67 +91,130 @@ string compilePhrase(const string& phrase, std::map<string, int>& slots) {
     return result;
 }
 
-Pattern phrasePattern(const string& phrase) {
+/**
+ * @brief Compile one DSL phrase into a full-match pattern.
+ * @throws std::runtime_error For an invalid length or DSL syntax.
+ */
+Pattern compilePhrase(const string& phrase) {
     if(phrase.empty() || phrase.size() > 512) {
-        throw std::runtime_error("Phrase length must be 1..512 characters");
+        throw runtime_error("Phrase length must be 1..512 characters");
     }
 
     Pattern pattern;
-    const string expression = compilePhrase(phrase, pattern.slots);
-    pattern.expression = regex(expression, regex::ECMAScript | regex::optimize);
+    pattern.expression = regex(translatePhrase(phrase, pattern.slots), regex::ECMAScript | regex::optimize);
     return pattern;
 }
 
-void validatePattern(const Pattern& pattern, const Rule& rule) {
-    for(const auto& field : rule.body.items()) {
-        if(!field.value().is_string()) {
-            continue;
+/**
+ * @brief Compile a rule's raw regex, mapping its configured capture groups to slots.
+ * @throws std::runtime_error For an invalid length, capture group or value_type.
+ */
+Pattern compileRegex(const json& row, const string& ruleId) {
+    const string expression = row.at("regex").get<string>();
+
+    if(expression.empty() || expression.size() > 1024) {
+        throw runtime_error("Regex length must be 1..1024: " + ruleId);
+    }
+
+    Pattern pattern{regex(expression, regex::ECMAScript | regex::optimize), {}};
+    const int groups = static_cast<int>(pattern.expression.mark_count());
+    const int device = row.value("device_group", 0);
+    const int value = row.value("value_group", 0);
+    const string type = row.value("value_type", string("volume"));
+
+    if(device < 0 || value < 0 || device > groups || value > groups) {
+        throw runtime_error("Capture group is out of range: " + ruleId);
+    }
+
+    if(value && type != "volume" && type != "percent" && type != "temperature") {
+        throw runtime_error("Invalid value_type: " + ruleId);
+    }
+
+    if(device) {
+        pattern.slots["device"] = device;
+    }
+
+    if(value) {
+        pattern.slots[type] = value;
+    }
+
+    return pattern;
+}
+
+/**
+ * @brief Require every body placeholder to be filled by a pattern.
+ *
+ * "{value}" is satisfied by any numeric slot: volume, percent or temperature.
+ *
+ * @throws std::runtime_error If a placeholder has no matching slot.
+ */
+void checkPlaceholders(const Pattern& pattern, const Rule& rule) {
+    const bool hasNumber =
+        pattern.slots.count("volume") || pattern.slots.count("percent") || pattern.slots.count("temperature");
+
+    for(const auto& field : rule.body) {
+        const string slot = placeholderName(field);
+
+        if(!slot.empty() && !pattern.slots.count(slot) && !(slot == "value" && hasNumber)) {
+            throw runtime_error("Body placeholder has no matching slot: " + rule.id + ": " + slot);
+        }
+    }
+}
+
+/**
+ * @brief Require aliases to map entity IDs to lists of nonempty names.
+ * @throws std::runtime_error For any other shape.
+ */
+void checkAliases(const json& aliases) {
+    if(!aliases.is_object()) {
+        throw runtime_error("aliases must map entity IDs to lists of spoken names");
+    }
+
+    for(const auto& [entity, names] : aliases.items()) {
+        if(entity.find('.') == string::npos || !names.is_array()) {
+            throw runtime_error("Alias entries need an entity ID and a list of names");
         }
 
-        const string value = field.value().get<string>();
-
-        if(value.size() > 2 && value.front() == '{' && value.back() == '}') {
-            const string key = value.substr(1, value.size() - 2);
-            const bool numericValue =
-                key == "value" && (pattern.slots.count("volume") || pattern.slots.count("percent") ||
-                                   pattern.slots.count("temperature"));
-
-            if(!pattern.slots.count(key) && !numericValue) {
-                throw std::runtime_error("Body placeholder has no matching slot: " + rule.id + ": " + key);
+        for(const auto& name : names) {
+            if(!name.is_string() || normalizeName(name.get<string>()).empty()) {
+                throw runtime_error("Alias names must be nonempty strings");
             }
         }
     }
 }
+} // namespace
 
-std::vector<Rule> compileRules(const json& config) {
-    if(!config.is_object() || config.value("version", 0) != 1 || !config.contains("rules") ||
-       !config["rules"].is_array() || config["rules"].empty() || config["rules"].size() > 256) {
-        throw std::runtime_error("Phrase YAML needs version: 1 and 1..256 rules");
+string placeholderName(const json& value) {
+    if(!value.is_string()) {
+        return "";
     }
 
-    static const std::set<string> rootFields = {"version", "aliases", "advantage_air", "rules"};
+    const auto& text = value.get_ref<const string&>();
+    return text.size() > 2 && text.front() == '{' && text.back() == '}' ? text.substr(1, text.size() - 2)
+                                                                        : "";
+}
 
-    for(const auto& field : config.items()) {
-        if(!rootFields.count(field.key())) {
-            throw std::runtime_error("Unknown YAML setting: " + field.key());
-        }
+std::vector<Rule> compileRules(const json& configuration) {
+    if(!configuration.is_object() || configuration.value("version", 0) != 1 ||
+       !configuration.contains("rules") || !configuration["rules"].is_array() ||
+       configuration["rules"].empty() || configuration["rules"].size() > 256) {
+        throw runtime_error("Phrase YAML needs version: 1 and 1..256 rules");
     }
 
+    static const std::set<string> ruleFields = {"id",       "domain",       "service",     "phrases",
+                                                "regex",    "device_group", "value_group", "value_type",
+                                                "relative", "body",         "values"};
     std::vector<Rule> rules;
     std::set<string> ids;
 
-    for(const auto& row : config["rules"]) {
-        static const std::set<string> ruleFields = {"id",       "domain",       "service",     "phrases",
-                                                    "regex",    "device_group", "value_group", "value_type",
-                                                    "relative", "body",         "values"};
-
+    for(const auto& row : configuration["rules"]) {
         if(!row.is_object()) {
-            throw std::runtime_error("Each rule must be a mapping");
+            throw runtime_error("Each rule must be a mapping");
         }
 
         for(const auto& field : row.items()) {
             if(!ruleFields.count(field.key())) {
-                throw std::runtime_error("Unknown rule field: " + field.key());
+                throw runtime_error("Unknown rule field: " + field.key());
             }
         }
 
@@ -162,87 +225,39 @@ std::vector<Rule> compileRules(const json& config) {
         rule.body = row.value("body", json::object());
         rule.values = row.value("values", json::object());
         rule.relative = row.value("relative", false);
+        const bool volumeStep =
+            rule.domain == "media_player" && (rule.service == "volume_up" || rule.service == "volume_down");
 
-        if(rule.id.empty() || !ids.insert(rule.id).second || !HomeServices::find(rule.domain, rule.service) ||
-           !rule.body.is_object() || rule.body.contains("entity_id") || !rule.values.is_object() ||
-           (rule.relative && (rule.domain != "media_player" ||
-                              (rule.service != "volume_up" && rule.service != "volume_down")))) {
-            throw std::runtime_error("Invalid or duplicate phrase rule: " + rule.id);
+        if(rule.id.empty() || !ids.insert(rule.id).second ||
+           !Commands::findService(rule.domain, rule.service) || !rule.body.is_object() ||
+           rule.body.contains("entity_id") || !rule.values.is_object() || (rule.relative && !volumeStep)) {
+            throw runtime_error("Invalid or duplicate phrase rule: " + rule.id);
         }
 
         if(row.contains("regex")) {
-            const string expression = row.at("regex").get<string>();
-
-            if(expression.empty() || expression.size() > 1024) {
-                throw std::runtime_error("Regex length must be 1..1024: " + rule.id);
-            }
-
-            Pattern pattern{regex(expression, regex::ECMAScript | regex::optimize), {}};
-            const int device = row.value("device_group", 0);
-            const int value = row.value("value_group", 0);
-
-            if(device < 0 || value < 0 || device > static_cast<int>(pattern.expression.mark_count()) ||
-               value > static_cast<int>(pattern.expression.mark_count())) {
-                throw std::runtime_error("Capture group is out of range: " + rule.id);
-            }
-
-            if(device) {
-                pattern.slots["device"] = device;
-            }
-
-            if(value) {
-                const string type = row.value("value_type", string("volume"));
-
-                if(type != "volume" && type != "percent" && type != "temperature") {
-                    throw std::runtime_error("Invalid value_type: " + rule.id);
-                }
-
-                pattern.slots[type] = value;
-            }
-
-            rule.patterns.push_back(std::move(pattern));
+            rule.patterns.push_back(compileRegex(row, rule.id));
         }
 
-        if(row.contains("phrases")) {
-            if(!row["phrases"].is_array()) {
-                throw std::runtime_error("phrases must be a list: " + rule.id);
-            }
+        if(row.contains("phrases") && !row["phrases"].is_array()) {
+            throw runtime_error("phrases must be a list: " + rule.id);
+        }
 
-            for(const auto& phrase : row["phrases"]) {
-                rule.patterns.push_back(phrasePattern(phrase.get<string>()));
-            }
+        for(const auto& phrase : row.value("phrases", json::array())) {
+            rule.patterns.push_back(compilePhrase(phrase.get<string>()));
         }
 
         if(rule.patterns.empty()) {
-            throw std::runtime_error("Rule has no phrases or regex: " + rule.id);
+            throw runtime_error("Rule has no phrases or regex: " + rule.id);
         }
 
         for(const auto& pattern : rule.patterns) {
-            validatePattern(pattern, rule);
+            checkPlaceholders(pattern, rule);
         }
 
         rules.push_back(std::move(rule));
     }
 
-    if(config.contains("aliases") && !config["aliases"].is_object()) {
-        throw std::runtime_error("aliases must map entity IDs to lists of spoken names");
-    }
-
-    if(config.contains("aliases")) {
-        for(const auto& entry : config["aliases"].items()) {
-            if(entry.key().find('.') == string::npos || !entry.value().is_array()) {
-                throw std::runtime_error("Alias entries need an entity ID and a list of names");
-            }
-
-            for(const auto& alias : entry.value()) {
-                if(!alias.is_string() || normalizeDeviceName(alias.get<string>()).empty()) {
-                    throw std::runtime_error("Alias names must be nonempty strings");
-                }
-            }
-        }
-    }
-
+    checkAliases(configuration.value("aliases", json::object()));
     return rules;
 }
-
-} // namespace Parser::Detail
+} // namespace Grammar

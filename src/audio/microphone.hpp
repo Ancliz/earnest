@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Ownership and synchronization contract for bounded PortAudio capture.
+ * @brief Default-microphone capture on a background thread with a bounded queue.
  */
 
 #pragma once
@@ -13,77 +13,72 @@
 #include <thread>
 #include <portaudio.h>
 
+/**
+ * @brief Records the default microphone in 100 ms blocks while the caller is busy elsewhere.
+ *
+ * The queue holds at most five seconds; overflow drops the queued audio and reports a
+ * discontinuity on the next read.
+ */
 class Microphone {
+    
+    /// Open PortAudio input stream.
     PaStream* stream = nullptr;
+
+    /// Capture thread running capture().
     std::thread worker;
+
+    /// Set to stop the capture thread.
     std::atomic<bool> stopping{false};
+
+    /// Guards pending, failure and lostAudio.
     std::mutex audioMutex;
+
+    /// Signalled when a block or failure is queued.
     std::condition_variable ready;
+
+    /// Captured blocks not yet read.
     std::deque<Audio::Samples> pending;
+
+    /// Read error reported by the capture thread.
     PaError failure = paNoError;
+
+    /// Whether audio was dropped since the last delivered block.
     bool lostAudio = false;
 
     /**
-     * @brief Read fixed-size audio blocks on the owned capture thread.
-     *
-     * Queues 100 ms blocks under the audio mutex and wakes waiting readers. A device
-     * overflow or a queue of 50 blocks discards queued audio and marks a discontinuity.
-     * Other PortAudio read failures are stored for the next read() call to report.
-     *
-     * @pre The PortAudio stream is open and started; called only by the owned worker.
-     * @note Performs blocking device reads and changes the queue/failure flags. It does
-     *       not transcribe, log, or execute commands.
+     * @brief Read blocks into the queue until stopped or a read fails; runs on the worker thread.
      */
     void capture();
 
 public:
     /**
-     * @brief Open the default microphone and begin bounded background capture.
-     *
-     * Initializes PortAudio, verifies mono float32 input at Audio::sampleRate, opens
-     * and starts the stream, then launches the capture worker. Partial setup is cleaned
-     * up if a checked device operation or worker creation fails.
-     *
-     * @throws std::runtime_error For absent/unusable input devices or PortAudio failures.
-     * @throws std::system_error If the capture thread cannot be created.
-     * @note Acquires audio resources immediately and starts recording during construction.
+     * @brief Open the default microphone as mono float32 at Audio::sampleRate and start capturing.
+     * @throws std::runtime_error For a missing or unusable input device or a PortAudio failure.
+     * @throws std::system_error If the capture thread cannot start.
      */
     Microphone();
+
     /**
-     * @brief Stop capture and release the worker, stream, and PortAudio resources.
-     *
-     * Signals shutdown, aborts the stream before joining the worker, closes the stream,
-     * and terminates this instance's PortAudio use. Pending samples are discarded.
-     *
-     * @note Blocks until the worker exits; PortAudio cleanup return codes are ignored.
+     * @brief Stop capture and release the stream; queued audio is discarded.
      */
     ~Microphone();
+
     /**
-     * @brief Disable copying of a live stream and its capture thread.
-     *
-     * Each microphone instance exclusively owns its stream, queue, and synchronization state.
+     * @brief Copying is disabled; each instance owns its stream and thread.
      */
     Microphone(const Microphone&) = delete;
+
     /**
-     * @brief Disable assignment of exclusively owned capture resources.
-     *
-     * Create a separate microphone instance to acquire another stream.
+     * @brief Assignment is disabled; each instance owns its stream and thread.
      */
     Microphone& operator=(const Microphone&) = delete;
+
     /**
-     * @brief Wait briefly for the next captured audio block and transfer it to the caller.
-     *
-     * Waits up to 100 ms for queued audio or a stored capture error. Successfully
-     * returned audio is removed from the queue; a pending discontinuity is reported
-     * once and cleared when that block is delivered.
-     *
-     * @param[out] block Receives the oldest queued mono float32 block on success;
-     *                   unchanged when no block is available.
-     * @param[out] discontinuity True if audio was lost since the previous delivery;
-     *                           unchanged when no block is returned.
-     * @return True when one block was delivered, false after a wait with no queued audio.
-     * @throws std::runtime_error If the capture worker stored a PortAudio read failure.
-     * @note Synchronizes queue access and consumes data; performs no transcription or HTTP.
+     * @brief Wait up to 100 ms for the next block.
+     * @param[out] block Oldest queued block, when one is returned.
+     * @param[out] discontinuity Whether audio was lost before that block, when one is returned.
+     * @return Whether a block was returned.
+     * @throws std::runtime_error If the capture thread hit a read error.
      */
     bool read(Audio::Samples& block, bool& discontinuity);
 };

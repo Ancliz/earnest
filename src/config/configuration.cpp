@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief YAML conversion, bounded file access, and configuration snapshot updates.
+ * @brief YAML conversion, bounded file access, and configuration reloads.
  */
 
 #include "configuration.hpp"
@@ -11,23 +11,80 @@
 #include <utility>
 #include <yaml.h>
 
-using nlohmann::json;
 using std::runtime_error;
 using std::string;
 
 namespace Config {
-
 namespace {
 
+/// Largest accepted configuration, in bytes.
+constexpr std::size_t maxBytes = 256 * 1024;
+
+/// Deepest accepted nesting, which also bounds alias cycles.
+constexpr unsigned maxDepth = 16;
+
+/// Most nodes visited after alias expansion.
+constexpr unsigned maxNodes = 32768;
+
 /**
- * @brief Read exactly the checked length of a bounded configuration file.
- *
- * @param[in] path Configuration filename to open with an input stream.
- * @return Owned file contents containing 1..262144 bytes.
- * @throws std::runtime_error If opening/seeking/reading fails, the size is outside
- *                            bounds, or the length changes during the read.
- * @note Performs filesystem I/O only. Same-length concurrent writes are not detected
- *       here; decoded content must still pass downstream validation.
+ * @brief Owns a libyaml parser reading from a string.
+ */
+struct YamlParser {
+
+    /// libyaml parser state.
+    yaml_parser_t handle;
+
+    /**
+     * @brief Start parsing text, which must outlive the parser.
+     * @throws std::runtime_error If libyaml cannot initialize.
+     */
+    explicit YamlParser(const string& text) {
+        if(!yaml_parser_initialize(&handle)) {
+            throw runtime_error("Cannot initialize YAML parser");
+        }
+
+        yaml_parser_set_input_string(&handle, reinterpret_cast<const unsigned char*>(text.data()),
+                                     text.size());
+    }
+
+    /**
+     * @brief Release the parser.
+     */
+    ~YamlParser() {
+        yaml_parser_delete(&handle);
+    }
+};
+
+/**
+ * @brief Owns the next document loaded from a parser.
+ */
+struct YamlDocument {
+    
+    /// libyaml document tree.
+    yaml_document_t handle;
+
+    /**
+     * @brief Load the parser's next document; an exhausted stream yields an empty document.
+     * @throws std::runtime_error With the line and problem when the YAML is invalid.
+     */
+    explicit YamlDocument(yaml_parser_t& parser) {
+        if(!yaml_parser_load(&parser, &handle)) {
+            throw runtime_error("YAML line " + std::to_string(parser.problem_mark.line + 1) + ": " +
+                                (parser.problem ? parser.problem : "invalid YAML"));
+        }
+    }
+
+    /**
+     * @brief Release the document.
+     */
+    ~YamlDocument() {
+        yaml_document_delete(&handle);
+    }
+};
+
+/**
+ * @brief Read a whole file of 1..maxBytes bytes.
+ * @throws std::runtime_error If the file cannot be read, is out of bounds, or changes length while read.
  */
 string readFile(const string& path) {
     std::ifstream stream(path);
@@ -39,7 +96,7 @@ string readFile(const string& path) {
     stream.seekg(0, std::ios::end);
     const auto size = stream.tellg();
 
-    if(size < 1 || size > 256 * 1024) {
+    if(size < 1 || static_cast<std::size_t>(size) > maxBytes) {
         throw runtime_error("Configuration YAML must contain 1..262144 bytes");
     }
 
@@ -55,43 +112,41 @@ string readFile(const string& path) {
 }
 
 /**
- * @brief Recursively convert a libyaml document node while bounding alias expansion.
- *
- * Walks sequences/mappings by document node ID, rejects duplicate/non-scalar keys,
- * and converts selected plain scalars into JSON booleans, nulls, or finite numbers.
- * Quoted scalars remain strings. Every expanded visit consumes one budget unit.
- *
- * @param[in] document Live libyaml document that owns node and referenced aliases.
- * @param[in] node Current node; a null pointer is invalid.
- * @param[in] depth Current recursion depth, starting at zero and limited to 16.
- * @param[in,out] budget Remaining expanded-node budget, decremented on each visit.
- * @return Independently owned JSON representation of the node subtree.
- * @throws std::runtime_error For invalid nodes, duplicate keys, or exhausted bounds.
- * @note Does not delete libyaml resources or perform file I/O; the caller owns cleanup.
+ * @brief Text of a scalar node.
  */
-json convert(yaml_document_t& document, yaml_node_t* node, unsigned depth, unsigned& budget) {
+string scalarText(const yaml_node_t& node) {
+    return string(reinterpret_cast<const char*>(node.data.scalar.value), node.data.scalar.length);
+}
+
+/**
+ * @brief Convert a document node to JSON, bounding depth and alias expansion.
+ * @param[in] depth Nesting of this node; the root is zero.
+ * @param[in,out] budget Nodes still allowed; every visit, including through an alias, uses one.
+ * @throws std::runtime_error For duplicate or non-scalar keys and exceeded limits.
+ */
+json toJson(yaml_document_t& document, yaml_node_t* node, unsigned depth, unsigned& budget) {
     if(budget == 0) {
-        throw runtime_error("YAML expansion exceeds 32768 nodes");
+        throw runtime_error("YAML expansion exceeds " + std::to_string(maxNodes) + " nodes");
     }
 
     --budget;
 
-    if(!node || depth > 16) {
-        throw runtime_error("YAML nesting or alias cycle exceeds 16 levels");
+    if(!node || depth > maxDepth) {
+        throw runtime_error("YAML nesting or alias cycle exceeds " + std::to_string(maxDepth) + " levels");
     }
 
     if(node->type == YAML_SEQUENCE_NODE) {
-        json result = json::array();
+        json list = json::array();
 
         for(auto item = node->data.sequence.items.start; item != node->data.sequence.items.top; ++item) {
-            result.push_back(convert(document, yaml_document_get_node(&document, *item), depth + 1, budget));
+            list.push_back(toJson(document, yaml_document_get_node(&document, *item), depth + 1, budget));
         }
 
-        return result;
+        return list;
     }
 
     if(node->type == YAML_MAPPING_NODE) {
-        json result = json::object();
+        json map = json::object();
 
         for(auto pair = node->data.mapping.pairs.start; pair != node->data.mapping.pairs.top; ++pair) {
             const auto* key = yaml_document_get_node(&document, pair->key);
@@ -100,170 +155,99 @@ json convert(yaml_document_t& document, yaml_node_t* node, unsigned depth, unsig
                 throw runtime_error("YAML keys must be strings");
             }
 
-            const string name(reinterpret_cast<char*>(key->data.scalar.value), key->data.scalar.length);
+            const string name = scalarText(*key);
 
-            if(result.contains(name)) {
+            if(map.contains(name)) {
                 throw runtime_error("Duplicate YAML key: " + name);
             }
 
-            result[name] =
-                convert(document, yaml_document_get_node(&document, pair->value), depth + 1, budget);
+            map[name] = toJson(document, yaml_document_get_node(&document, pair->value), depth + 1, budget);
         }
 
-        return result;
+        return map;
     }
 
     if(node->type != YAML_SCALAR_NODE) {
         throw runtime_error("Unsupported YAML node");
     }
 
-    const string value(reinterpret_cast<char*>(node->data.scalar.value), node->data.scalar.length);
+    const string value = scalarText(*node);
 
+    // Only plain (unquoted) scalars can be booleans, null or numbers.
     if(node->data.scalar.style == YAML_PLAIN_SCALAR_STYLE) {
-        if(value == "true") {
-            return true;
-        }
-
-        if(value == "false") {
-            return false;
+        if(value == "true" || value == "false") {
+            return value == "true";
         }
 
         if(value == "null" || value == "~" || value.empty()) {
             return nullptr;
         }
 
-        auto numeric = json::parse(value, nullptr, false);
+        const auto number = json::parse(value, nullptr, false);
 
-        if(numeric.is_number() && std::isfinite(numeric.get<double>())) {
-            return numeric;
+        if(number.is_number() && std::isfinite(number.get<double>())) {
+            return number;
         }
     }
 
     return value;
 }
-
 } // namespace
 
-/**
- * @copydoc Config::readYaml(const std::string&)
- */
-json readYaml(const string& text) {
-    if(text.empty() || text.size() > 256 * 1024) {
+json readYaml(const std::string& text) {
+    if(text.empty() || text.size() > maxBytes) {
         throw runtime_error("Phrase YAML must contain 1..262144 bytes");
     }
 
-    yaml_parser_t parser;
+    YamlParser parser(text);
+    YamlDocument document(parser.handle);
+    unsigned budget = maxNodes;
+    json result = toJson(document.handle, yaml_document_get_root_node(&document.handle), 0, budget);
+    YamlDocument trailing(parser.handle);
 
-    if(!yaml_parser_initialize(&parser)) {
-        throw runtime_error("Cannot initialize YAML parser");
+    if(yaml_document_get_root_node(&trailing.handle)) {
+        throw runtime_error("Use one YAML document per phrase file");
     }
 
-    yaml_parser_set_input_string(&parser, reinterpret_cast<const unsigned char*>(text.data()), text.size());
-    yaml_document_t document;
-
-    if(!yaml_parser_load(&parser, &document)) {
-        const string problem = parser.problem ? parser.problem : "invalid YAML";
-        const auto line = parser.problem_mark.line + 1;
-        yaml_parser_delete(&parser);
-        throw runtime_error("YAML line " + std::to_string(line) + ": " + problem);
-    }
-
-    json result;
-    bool firstDocument = true;
-
-    try {
-        unsigned budget = 32768;
-        result = convert(document, yaml_document_get_root_node(&document), 0, budget);
-        yaml_document_delete(&document);
-        firstDocument = false;
-        yaml_document_t extra;
-
-        if(!yaml_parser_load(&parser, &extra)) {
-            throw runtime_error("Invalid trailing YAML document");
-        }
-
-        const bool multiple = yaml_document_get_root_node(&extra) != nullptr;
-        yaml_document_delete(&extra);
-
-        if(multiple) {
-            throw runtime_error("Use one YAML document per phrase file");
-        }
-    } catch(...) {
-        if(firstDocument) {
-            yaml_document_delete(&document);
-        }
-
-        yaml_parser_delete(&parser);
-        throw;
-    }
-
-    yaml_parser_delete(&parser);
     return result;
 }
 
-/**
- * @copydoc Config::readYamlFile(const std::string&)
- */
-json readYamlFile(const string& path) {
+json readYamlFile(const std::string& path) {
     return readYaml(readFile(path));
 }
 
-string defaultFile() {
-#ifdef SMARTHOME_PHRASE_FILE
-    return SMARTHOME_PHRASE_FILE;
-#else
-    return "config/phrases.yaml";
-#endif
-}
-
-/** @cond OUT_OF_LINE_CONSTRUCTOR */
 Configuration::Configuration(string path, std::function<void(const json&)> apply)
     : path(std::move(path)), apply(std::move(apply)) {
-    reload();
+    lastText = readFile(this->path);
+    load(lastText);
 }
 
-/** @endcond */
+void Configuration::load(const string& text) {
+    json candidate = readYaml(text);
 
-void Configuration::load(string text) {
-    auto next = readYaml(text);
-    string nextSeen = text;
-    apply(next);
-    values.swap(next);
-    active.swap(text);
-    seen.swap(nextSeen);
-    failure.clear();
-}
+    try {
+        apply(candidate);
+    } catch(...) {
+        // One consumer may have accepted the candidate before another rejected it.
+        if(!active.is_null()) {
+            apply(active);
+        }
 
-void Configuration::reload() {
-    load(readFile(path));
+        throw;
+    }
+
+    active = std::move(candidate);
 }
 
 bool Configuration::reloadIfChanged() {
-    try {
-        string text = readFile(path);
+    string text = readFile(path);
 
-        if(text == seen) {
-            if(text == active) {
-                failure.clear();
-            }
-
-            return false;
-        }
-
-        seen = text;
-        load(std::move(text));
-        return true;
-    } catch(const std::exception& error) {
-        failure = error.what();
+    if(text == lastText) {
         return false;
     }
-}
 
-const json& Configuration::data() const {
-    return values;
-}
-
-const string& Configuration::error() const {
-    return failure;
+    lastText = std::move(text);
+    load(lastText);
+    return true;
 }
 } // namespace Config

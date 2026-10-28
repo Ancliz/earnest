@@ -1,113 +1,152 @@
 /**
  * @file
- * @brief Home Assistant HTTP transport and structured execution outcomes.
+ * @brief Home Assistant HTTP transport, discovery, and checked execution.
  */
 
 #include "home_assistant.hpp"
-#include "control_policy.hpp"
 
+#include <algorithm>
+#include <set>
 #include <stdexcept>
 
+using Commands::Command;
+using Commands::Devices;
 using Commands::json;
+using Commands::Result;
 using std::runtime_error;
 using std::string;
 
-HomeAssistant::HomeAssistant(const string& url, const string& token) : client(url) {
-    if(token.empty()) {
-        throw runtime_error("Set HOME_ASSISTANT_TOKEN before starting voice control");
+namespace {
+/**
+ * @brief Whether a /api/services array currently offers the command's service.
+ *
+ * Integrations can be unloaded at runtime, so the static catalog alone is not enough.
+ */
+bool isAdvertised(const json& services, const Command& command) {
+    return std::any_of(services.begin(), services.end(), [&](const json& group) {
+        return group.is_object() && group.value("domain", string()) == command.domain &&
+               group.contains("services") && group["services"].is_object() &&
+               group["services"].contains(command.service);
+    });
+}
+} // namespace
+
+Devices controllableDevices(const json& states) {
+    if(!states.is_array()) {
+        throw runtime_error("Home Assistant states must be a JSON array");
     }
 
-    client.set_default_headers({{"Authorization", string("Bearer ") + token}});
+    static const std::set<string> domains = {"media_player", "climate", "light", "switch",
+                                             "fan",          "cover",   "select"};
+    Devices devices;
+
+    for(const auto& state : states) {
+        const json entityId = state.is_object() ? state.value("entity_id", json()) : json();
+
+        if(!entityId.is_string()) {
+            continue;
+        }
+
+        const string entity = entityId.get<string>();
+        const auto dot = entity.find('.');
+
+        if(dot == string::npos || dot + 1 == entity.size() || !domains.count(entity.substr(0, dot))) {
+            continue;
+        }
+
+        json attributes = state.value("attributes", json::object());
+
+        if(!attributes.is_object()) {
+            attributes = json::object();
+        }
+
+        const json friendlyName = attributes.value("friendly_name", json());
+        const string name = friendlyName.is_string() ? friendlyName.get<string>() : entity.substr(dot + 1);
+        devices.push_back({entity, name, entity.substr(0, dot), state.value("state", string("unknown")),
+                           std::move(attributes)});
+    }
+
+    return devices;
+}
+
+HomeAssistant::HomeAssistant(const string& url, const string& token) : client(url) {
+    client.set_bearer_token_auth(token);
     client.set_connection_timeout(5);
     client.set_read_timeout(10);
     client.set_write_timeout(10);
 }
 
-json HomeAssistant::getStates() {
-    const auto response = client.Get("/api/states");
+json HomeAssistant::getArray(const string& path) {
+    const auto response = client.Get(path);
 
     if(!response) {
-        throw runtime_error("Cannot query Home Assistant states: " + httplib::to_string(response.error()));
+        throw runtime_error("Cannot query Home Assistant " + path + ": " +
+                            httplib::to_string(response.error()));
     }
 
     if(response->status != 200) {
-        throw runtime_error("Home Assistant states returned HTTP " + std::to_string(response->status));
+        throw runtime_error("Home Assistant " + path + " returned HTTP " + std::to_string(response->status));
     }
 
-    auto states = json::parse(response->body, nullptr, false);
+    auto body = json::parse(response->body, nullptr, false);
 
-    if(!states.is_array()) {
-        throw runtime_error("Home Assistant returned invalid states JSON");
+    if(!body.is_array()) {
+        throw runtime_error("Home Assistant " + path + " returned invalid JSON");
     }
 
-    return states;
+    return body;
 }
 
-json HomeAssistant::getServices() {
-    const auto response = client.Get("/api/services");
-
-    if(!response || response->status != 200) {
-        throw runtime_error("Cannot query Home Assistant services");
-    }
-
-    auto services = json::parse(response->body, nullptr, false);
-
-    if(!services.is_array()) {
-        throw runtime_error("Invalid Home Assistant services JSON");
-    }
-
-    return services;
+void HomeAssistant::configure(const json& configuration) {
+    policy = readAirflowPolicy(configuration);
 }
 
-Commands::ExecutionResult HomeAssistant::check(const json& request, const json& configuration) {
+Devices HomeAssistant::discoverDevices() {
+    return controllableDevices(getArray("/api/states"));
+}
+
+Result HomeAssistant::preview(const Command& command) {
     try {
-        auto result = prepareCommand(request, getStates(), configuration);
+        auto result = validateCommand(command, discoverDevices(), policy);
 
-        if(!result.success) {
-            return result;
+        if(result.success && !isAdvertised(getArray("/api/services"), result.command)) {
+            return {false, "Service is unavailable: " + result.command.domain + "." + result.command.service,
+                    result.command};
         }
 
-        const string path = result.request.at("endpoint").get<string>().substr(string("/services/").size());
-        const auto separator = path.find('/');
-        const string domain = path.substr(0, separator);
-        const string service = path.substr(separator + 1);
-
-        for(const auto& entry : getServices()) {
-            if(entry.is_object() && entry.value("domain", string()) == domain && entry.contains("services") &&
-               entry["services"].is_object() && entry["services"].contains(service)) {
-                return result;
-            }
-        }
-
-        return {false, "Service is unavailable: " + path};
+        return result;
     } catch(const std::exception& error) {
-        return {false, string("Cannot verify command: ") + error.what()};
+        return {false, string("Cannot verify command: ") + error.what(), command};
     }
 }
 
-Commands::ExecutionResult HomeAssistant::execute(const json& request, const json& configuration) {
-    auto result = check(request, configuration);
+Result HomeAssistant::execute(const Command& command) {
+    auto result = preview(command);
 
     if(!result.success) {
         return result;
     }
 
     try {
-        const string endpoint = result.request.at("endpoint").get<string>();
-        const auto response =
-            client.Post("/api" + endpoint, result.request.at("body").dump(), "application/json");
+        json body = result.command.data;
+        body["entity_id"] = result.command.entity;
+        const string path = "/api/services/" + result.command.domain + "/" + result.command.service;
+        const auto response = client.Post(path, body.dump(), "application/json");
 
         if(!response) {
-            return {false, "Home Assistant request failed: " + httplib::to_string(response.error())};
+            return {false, "Home Assistant request failed: " + httplib::to_string(response.error()),
+                    result.command};
         }
 
         if(response->status < 200 || response->status >= 300) {
-            return {false, "Home Assistant returned HTTP " + std::to_string(response->status) + ": " +
-                               response->body};
+            return {false,
+                    "Home Assistant returned HTTP " + std::to_string(response->status) + ": " +
+                        response->body,
+                    result.command};
         }
 
         return result;
     } catch(const std::exception& error) {
-        return {false, string("Home Assistant request failed: ") + error.what()};
+        return {false, string("Home Assistant request failed: ") + error.what(), result.command};
     }
 }

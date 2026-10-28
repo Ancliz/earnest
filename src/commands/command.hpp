@@ -1,144 +1,181 @@
 /**
  * @file
- * @brief Shared command context, parser/executor contracts, and execution results.
+ * @brief Command vocabulary and the parser/executor contracts shared by every pipeline stage.
  */
 
 #pragma once
 
+#include <optional>
 #include <string>
-#include <unordered_map>
+#include <tuple>
+#include <utility>
+#include <vector>
 #include <nlohmann/json.hpp>
 
-using std::string;
-using std::unordered_map;
-
 namespace Commands {
+/// JSON value type used for configuration, attributes and service data.
 using json = nlohmann::json;
+using std::string;
 
-struct Context {
-    /// Maps normalized media-player names and aliases to their entity IDs.
-    unordered_map<string, string> devices;
+/**
+ * @brief A controllable entity reported by an executor.
+ */
+struct Device {
 
-    /// Maps each domain to its normalized device names and aliases, each resolving to an entity ID.
-    unordered_map<string, unordered_map<string, string>> domainDevices;
+    /// Full entity ID, such as "light.kitchen".
+    string entityId;
 
-    /// Maps entity IDs to their current state and attributes as JSON.
-    unordered_map<string, json> deviceStates;
-    
-    bool fuzzyDevices = true;
-    bool strictDevices = false;
-    string defaultDevice;
+    /// Friendly name, or the entity's object ID when it has none.
+    string name;
+
+    /// Entity domain, such as "light".
+    string domain;
+
+    /// Current state, such as "on" or "unavailable".
+    string state;
+
+    /// Device-reported capabilities and current values.
+    json attributes = json::object();
 };
 
 /**
- * @brief Produce the canonical spelling used for spoken device aliases.
- *
- * Applies speech normalization, removes one leading "the " and one trailing
- * possessive "'s", and trims surrounding spaces. Entity-ID dots and underscores
- * are preserved; this function does not query discovery or resolve an entity.
- *
- * @param[in] name Device name or alias, copied before normalization.
- * @return Canonical alias, possibly empty when the input contains no name.
+ * @brief Devices available to a parser or executor.
  */
-string normalizeDeviceName(string name);
-/**
- * @brief Resolve a spoken name within one device domain using a supplied context.
- *
- * Uses normalized aliases, optional bounded fuzzy matching, and the configured
- * default target. Equally good matches to different entities and deliberately
- * blocked aliases are rejected. Non-strict media-player contexts may retain an
- * unresolved name; a missing media target can also resolve to null.
- *
- * @param[in] name Captured spoken name; an empty name requests default-target handling.
- * @param[in] domain Home Assistant domain, such as "climate" or "media_player".
- * @param[in] context Discovery snapshot and resolution preferences; never modified.
- * @return Entity-ID string, permitted unresolved media name, or JSON null when no
- *         usable target can be supplied.
- * @note Performs no HTTP, file access, logging, or device control.
- */
-json resolveEntityId(const string& name, const string& domain, const Context& context);
+using Devices = std::vector<Device>;
 
+/**
+ * @brief One service call: run domain.service on an entity with the given data fields.
+ */
+struct Command {
+
+    /// Service domain, such as "media_player".
+    string domain;
+
+    /// Service name within the domain, such as "volume_set".
+    string service;
+    
+    /// Target entity ID; empty when no device was named and no default applies.
+    string entity;
+    
+    /// Service fields, excluding entity_id.
+    json data = json::object();
+};
+
+/**
+ * @brief Whether two commands have identical fields.
+ */
+inline bool operator==(const Command& left, const Command& right) {
+    return std::tie(left.domain, left.service, left.entity, left.data) ==
+           std::tie(right.domain, right.service, right.entity, right.data);
+}
+
+/**
+ * @brief Whether two commands differ in any field.
+ */
+inline bool operator!=(const Command& left, const Command& right) {
+    return !(left == right);
+}
+
+/**
+ * @brief JSON conversion for printing commands and building them from model output.
+ */
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Command, domain, service, entity, data)
+
+/**
+ * @brief What a parser may refer to while interpreting text.
+ */
+struct Context {
+
+    /// Devices discovered for this text.
+    Devices devices;
+
+    /// Entity used when the text names no device; ignored outside its own domain.
+    string defaultDevice;
+
+    /// Whether device names may match despite small misspellings.
+    bool fuzzyNames = true;
+
+    /**
+     * @brief A context for the given devices with default preferences.
+     */
+    Context(Devices devices = {}) : devices(std::move(devices)) {}
+};
+
+/**
+ * @brief Outcome of previewing or executing a command.
+ */
+struct Result {
+    
+    /// Whether the command was accepted and, for execution, sent successfully.
+    bool success = false;
+
+    /// Reason for rejection or failure; empty on success.
+    string error;
+
+    /// The command as it would be or was sent, after internal resolution such as relative volume.
+    Command command;
+};
+
+/**
+ * @brief Turns text into at most one command. Implementations never execute anything.
+ */
 class Parser {
 public:
     /**
-     * @brief Destroy a parser implementation through the shared interface.
-     *
-     * Derived destructors release backend-owned resources. Destruction must not
-     * execute any pending device command.
+     * @brief Destroy a parser through the interface.
      */
     virtual ~Parser() = default;
+
     /**
-     * @brief Prepare and commit a configuration for this parser instance.
-     *
-     * Implementations must validate and prepare candidate state before replacing
-     * active state. The application uses this guarantee to keep its policy snapshot
-     * consistent with the parser when a configuration reload fails.
-     *
-     * @param[in] configuration Decoded application configuration; backend interpretation
-     *                          is implementation-specific.
-     * @throws std::exception If candidate validation or preparation fails; the previous
-     *                       usable configuration must remain active.
-     * @note May change parser-owned state, but must not execute device commands.
+     * @brief Replace the active configuration with a decoded phrase file.
+     * @throws std::exception If the configuration is invalid; the previous one stays active.
      */
     virtual void configure(const json& configuration) = 0;
+
     /**
-     * @brief Interpret completed speech or typed text as one proposed command.
+     * @brief Interpret completed speech or typed text.
      *
-     * The parser receives data, rather than a device-control client. Backends may
-     * use local grammar or an inference service, but execution belongs to Executor.
-     * The current command contract represents a single request, not a batch of tools.
+     * Non-const so that network-backed parsers can use their clients.
      *
-     * @param[in] text Completed transcript or user-entered command text.
-     * @param[in] context Discovered devices, aliases, state, and resolution preferences.
-     * @return Proposed command JSON, or null for unsupported, invalid, or ambiguous input.
-     * @throws std::exception If a backend encounters an operational or invalid-data error.
-     * @note Must not execute commands or change the supplied context. A returned command
-     *       still requires independent executor validation.
+     * @param[in] text Transcript or typed command.
+     * @param[in] context Devices and name-resolution preferences for this text.
+     * @return The single command the text asks for, or nullopt when unsupported or ambiguous.
      */
-    virtual json parse(const string& text, const Context& context = {}) const = 0;
+    virtual std::optional<Command> parse(const string& text, const Context& context) = 0;
 };
 
-struct ExecutionResult {
-    bool success = false;
-    string error;
-    json request = nullptr;
-};
-
+/**
+ * @brief Discovers devices and runs commands against them.
+ */
 class Executor {
 public:
     /**
-     * @brief Release executor-owned resources through the polymorphic interface.
-     *
-     * Destruction must not retry or execute previously submitted commands.
+     * @brief Destroy an executor through the interface.
      */
     virtual ~Executor() = default;
+
     /**
-     * @brief Resolve and validate a proposed command without controlling a device.
-     *
-     * An implementation may read fresh state or service metadata. It must apply the
-     * same acceptance rules used immediately before execution, including rules that
-     * are independent of the parser that supplied the command.
-     *
-     * @param[in] command Proposed command or internal intent produced by a parser.
-     * @param[in] configuration Active application policy snapshot.
-     * @return Validation outcome, explanatory error on failure, and a resolved request
-     *         on success. A successful check does not reserve state for later execution.
-     * @note Read-only network access is permitted; control requests are forbidden.
+     * @brief Replace the active configuration with a decoded phrase file.
+     * @throws std::exception If the configuration is invalid; the previous one stays active.
      */
-    virtual ExecutionResult check(const json& command, const json& configuration) = 0;
+    virtual void configure(const json& configuration) = 0;
+
     /**
-     * @brief Validate and execute one proposed command using the active policy.
-     *
-     * Execution must validate current conditions rather than trusting an earlier
-     * preview or relying on the parser implementation to have vetted its output.
-     *
-     * @param[in] command Proposed command or internal intent to execute.
-     * @param[in] configuration Active application policy snapshot.
-     * @return Execution outcome and error details; successful implementations may also
-     *         return the concrete request they submitted.
-     * @note This operation may change external device state. Backend retry and transport
-     *       semantics are specified by the concrete executor.
+     * @brief Devices that commands may target right now.
+     * @throws std::exception If the devices cannot be queried.
      */
-    virtual ExecutionResult execute(const json& command, const json& configuration) = 0;
+    virtual Devices discoverDevices() = 0;
+
+    /**
+     * @brief Validate against live state and return what execute() would send, without sending it.
+     * @return Failures as results; never throws.
+     */
+    virtual Result preview(const Command& command) = 0;
+
+    /**
+     * @brief Validate against live state, then send the command once.
+     * @return Failures as results; never throws.
+     */
+    virtual Result execute(const Command& command) = 0;
 };
 } // namespace Commands
