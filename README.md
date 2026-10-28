@@ -60,18 +60,29 @@ last valid configuration.
 ```
 
 The discovery and dry-run modes send no control commands and require no Whisper
-model. Set `HOME_ASSISTANT_TOKEN` in the environment or ignored `.env` file. Optionally
+model. Dry runs query both states and service availability. Set `HOME_ASSISTANT_TOKEN` in the environment or ignored `.env` file. Optionally
 set `HOME_ASSISTANT_URL` to a full URL including port.
 
 `HomeAssistant::getStates` fetches state; `findAvailableDevices` filters controllable
-entities; `populateDeviceAliases` builds domain-specific maps; `Parser::resolveEntityId`
+entities; `buildCommandContext` returns domain-specific maps; `Commands::resolveEntityId`
 looks up a spoken name using those maps. Friendly-name normalization is shared.
-`Parser::Engine` compiles rules from YAML. `processUtterance` transcribes, parses once,
-calls `debugPrintTranscript` for diagnostic output, then posts through the separate Home Assistant client. Both
-utterance completion and shutdown use this same path. Posting rechecks live state
-and the current service list, applies capability and airflow constraints, and sends
-one request with timeouts and no automatic retries. The program does not generate
-phrases at runtime or send climate commands through a conversation agent.
+`Commands::Parser` is the backend interface; `Parser::RegexParser` implements it.
+`WhisperTranscriber::transcribe` returns text only. The application then obtains a
+device snapshot, calls `parser->parse(text, context)`, prints debug output, and
+explicitly calls `executor.execute(command, configuration)`. Parsing cannot post
+commands. Another parser backend can be selected at the composition root without
+changing audio capture or execution.
+
+`Config::Configuration` owns file reads and transactional hot reload. Parser
+configuration changes are explicit; parsing never reloads files or uses a shared
+global engine. `HomeAssistant` implements `Commands::Executor`: `check` performs
+read-only live-state and service validation; `execute` performs those same checks
+and posts once. Both return structured results, leaving reporting to the app.
+Relative volume amounts are resolved against fresh state and sent through the
+ordinary volume service. Arbitrary conversation requests are rejected.
+
+See [the architecture audit](docs/architecture.md) for the reviewed concerns,
+changes, side-effect boundaries, and remaining limitations.
 
 ## Parser tests
 
@@ -88,13 +99,30 @@ References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 
 ## Project layout
 
-- `src/app/`: startup, settings, Whisper transcription, and command dispatch.
+- `src/app/`: startup, CLI/connection settings, orchestration, and reporting.
+- `src/commands/`: parser/executor contracts and command context/results.
+- `src/config/`: bounded YAML decoding, file access, and transactional reload.
+- `src/speech/`: Whisper transcription.
 - `src/audio/`: microphone capture and utterance buffering.
 - `src/parser/`: phrase parsing, YAML decoding, and text/device-name matching.
 - `src/home_assistant/`: HTTP client, device discovery, and control policy.
 - `config/phrases.yaml`: editable phrases, aliases, and installation policy.
 - `tests/` and `docs/`: automated checks and supporting documentation.
 
-Small application-only helpers live in `src/app/main.cpp`. Parser implementation
+Small application-only reporting helpers live in `src/app/main.cpp`. Parser implementation
 helpers share `src/parser/detail.hpp`; separate headers remain for shared module
 interfaces and classes with substantial implementations.
+
+## API documentation
+
+Functions and methods use Doxygen comments for behavior, parameters, return values,
+errors, ownership, and side effects. Public contracts live in headers; private
+helpers and test callbacks are described beside their implementations.
+
+With Doxygen installed, generate the browsable reference from the repository root:
+
+```sh
+doxygen docs/Doxyfile
+```
+
+Open `build/docs/html/index.html`. Generated HTML/XML stays in the ignored build tree.

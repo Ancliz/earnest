@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Discovery filtering, normalized aliases, and collision handling.
+ */
+
 #include "device_aliases.hpp"
 
 #include <algorithm>
@@ -5,7 +10,7 @@
 #include <stdexcept>
 #include <utility>
 
-using Parser::json;
+using Commands::json;
 using std::runtime_error;
 using std::string;
 using std::unordered_map;
@@ -57,7 +62,7 @@ vector<Device> findAvailableDevices(const json& states, bool includeUnavailable)
     return devices;
 }
 
-void populateDeviceAliases(const json& states, Parser::Options& options) {
+Commands::Context buildCommandContext(const json& states, Commands::Context options) {
     const auto devices = findAvailableDevices(states, true);
 
     if(devices.empty()) {
@@ -69,8 +74,16 @@ void populateDeviceAliases(const json& states, Parser::Options& options) {
 
     for(const auto& device : devices) {
         auto& aliases = domains[device.domain];
+        /*
+         * @brief Add one normalized name to the current domain's candidate alias map.
+         *
+         * @param[in] name Friendly name, full entity ID, or readable entity name to normalize.
+         * @note Ignores empty names, preserves repeated aliases for the same entity, and marks
+         *       a collision between different entities with a blocked empty ID. Mutates only
+         *       the locally built map, not the caller's original context.
+         */
         const auto addAlias = [&](const string& name) {
-            const string alias = Parser::normalizeDeviceName(name);
+            const string alias = Commands::normalizeDeviceName(name);
 
             if(alias.empty()) {
                 return;
@@ -96,4 +109,5 @@ void populateDeviceAliases(const json& states, Parser::Options& options) {
     options.domainDevices = std::move(domains);
     options.deviceStates = std::move(stateMap);
     options.strictDevices = true;
+    return options;
 }

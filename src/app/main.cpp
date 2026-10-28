@@ -1,139 +1,97 @@
+/**
+ * @file
+ * @brief CLI composition root for explicit speech, parsing, checking, and execution stages.
+ */
+
 #include "settings.hpp"
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/control_policy.hpp"
+#include "home_assistant/device_aliases.hpp"
 #include "home_assistant/home_assistant.hpp"
+#include "parser/parser.hpp"
+#include "speech/transcriber.hpp"
 
 #include <chrono>
 #include <csignal>
-#include <cstdlib>
 #include <iostream>
-#include <utility>
 #include <memory>
-#include <stdexcept>
-#include <whisper.h>
+#include <utility>
 
-using Audio::Samples;
-using Parser::json;
+using Commands::json;
 using std::string;
 
 namespace {
-using Audio::sampleRate;
-using std::runtime_error;
+volatile std::sig_atomic_t running = 1;
 
-class Transcriber {
-    std::unique_ptr<whisper_context, decltype(&whisper_free)> context{nullptr, whisper_free};
-    whisper_full_params parameters;
-
-public:
-    explicit Transcriber(const Settings& settings);
-    string transcribe(Audio::Samples audio);
-};
-
-static_assert(sampleRate == WHISPER_SAMPLE_RATE);
-
-Transcriber::Transcriber(const Settings& settings) : parameters(whisper_full_default_params(WHISPER_SAMPLING_GREEDY)) {
-    auto config = whisper_context_default_params();
-    config.use_gpu = settings.gpu;
-    context.reset(whisper_init_from_file_with_params(settings.model.c_str(), config));
-
-    if(!context) {
-        throw runtime_error("Failed to load Whisper model: " + settings.model);
-    }
-
-    parameters.n_threads = settings.threads;
-    parameters.language = "en";
-    parameters.translate = false;
-    parameters.no_context = true;
-    parameters.no_timestamps = true;
-    parameters.print_realtime = false;
-    parameters.print_progress = false;
-    parameters.print_timestamps = false;
-    parameters.print_special = false;
-    parameters.suppress_blank = true;
-    parameters.suppress_nst = true;
-    parameters.temperature_inc = 0; // Avoid costly fallback retries for short commands
+/**
+ * @brief Request graceful application shutdown from a process signal handler.
+ *
+ * The unnamed argument is the delivered signal number and is intentionally ignored.
+ * Only the signal-safe flag assignment occurs here; the main loop later flushes
+ * buffered speech and allows resource-owning objects to clean up.
+ *
+ * @note Does not perform I/O, lock mutexes, allocate memory, or execute a command.
+ */
+void handleSignal(int) {
+    running = 0;
 }
 
-string Transcriber::transcribe(Samples audio) {
-    // Short commands still need a minimum audio window for Whisper
-    if(audio.size() < sampleRate) {
-        audio.resize(sampleRate, 0);
-    }
-
-    if(whisper_full(context.get(), parameters, audio.data(), static_cast<int>(audio.size())) != 0) {
-        throw runtime_error("Whisper transcription failed");
-    }
-
-    string text;
-
-    for(int i = 0; i < whisper_full_n_segments(context.get()); ++i) {
-        text += whisper_full_get_segment_text(context.get(), i);
-    }
-
-    return text;
-}
-
+/**
+ * @brief Print a completed transcript and its proposed command for debugging.
+ *
+ * @param[in] text Recognized or typed text to display after the Final label.
+ * @param[in] request Parsed command JSON, or null when no command was recognized.
+ * @note Writes standard output only; does not parse, validate, or execute the request.
+ */
 void debugPrintTranscript(const string& text, const json& request) {
-    std::cout << "Final: " << text << std::endl;
+    std::cout << "Final: " << text << '\n';
 
     if(request.is_null()) {
         std::cout << "No command recognized\n";
     } else {
-        std::cout << "Command recognized: " << request << std::endl;
+        std::cout << "Command recognized: " << request << '\n';
     }
 }
 
-bool processTranscript(const string& text, HomeAssistant& assistant, Parser::Engine& phrases,
-                       Parser::Options& options, bool send = true) {
-    if(text.find_first_not_of(" \t\r\n") == string::npos) {
-        return false;
+/**
+ * @brief Display a preview/execution outcome and preserve its success status.
+ *
+ * @param[in] result Structured executor result, including error or resolved request.
+ * @param[in] preview Whether successful output describes a hypothetical submission.
+ * @return result.success, suitable for CLI exit-code selection by the caller.
+ * @note Writes failures to stderr and successful outcomes to stdout. This reporting
+ *       flag cannot enable execution and does not itself send a request.
+ */
+bool reportResult(const Commands::ExecutionResult& result, bool preview) {
+    if(!result.success) {
+        std::cerr << (preview ? "Would reject: " : "Command failed: ") << result.error << '\n';
+    } else if(preview) {
+        std::cout << "Would send: " << result.request << '\n';
+    } else {
+        std::cout << "Command sent\n";
     }
 
-    json states;
-
-    try {
-        states = assistant.getStates();
-        populateDeviceAliases(states, options);
-    } catch(const std::exception& error) {
-        std::cerr << "Cannot refresh device discovery: " << error.what() << '\n';
-        return false;
-    }
-
-    phrases.reloadIfChanged();
-    const json request = phrases.parse(text, options);
-    debugPrintTranscript(text, request);
-
-    if(request.is_null()) {
-        return false;
-    }
-
-    if(send) {
-        return assistant.post(request, phrases.configuration());
-    }
-
-    const string reason = validateCommand(request, states, phrases.configuration());
-
-    if(!reason.empty()) {
-        std::cout << "Would reject: " << reason << '\n';
-        return false;
-    }
-
-    return true;
-}
-
-void processUtterance(Samples audio, Transcriber& transcriber, HomeAssistant& assistant,
-                      Parser::Engine& phrases, Parser::Options& options) {
-    processTranscript(transcriber.transcribe(std::move(audio)), assistant, phrases, options);
-}
-
-volatile std::sig_atomic_t running = 1;
-
-void handleSignal(int) {
-    running = 0;
+    return result.success;
 }
 } // namespace
 
+/**
+ * @brief Compose recognition, parsing, configuration, and execution for the CLI application.
+ *
+ * Selects a parser implementation, validates the initial configuration, and handles
+ * help, configuration checking, discovery, or read-only parsing before opening audio.
+ * Listening mode captures completed utterances, transcribes them, explicitly parses
+ * with fresh discovery context, and explicitly executes accepted commands. Polls
+ * configuration and handles normal/shutdown completion through one processing block.
+ *
+ * @param[in] argc Process argument count, including the executable name.
+ * @param[in] argv CLI arguments passed to parseArguments().
+ * @return Zero for successful completion, one for failed parsing/preview or a caught
+ *         fatal application exception.
+ * @note This is the composition root: it owns output, file reloads, signal handlers,
+ *       audio/model resource acquisition, and the decision to execute device control.
+ */
 int main(int argc, char* argv[]) {
     if(argc == 2 && (string(argv[1]) == "--help" || string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -142,18 +100,29 @@ int main(int argc, char* argv[]) {
 
     try {
         const auto settings = parseArguments(argc, argv);
-        Parser::Engine phrases(settings.phrases);
+        // The composition root selects the backend. No audio or executor code depends on RegexParser.
+        std::unique_ptr<Commands::Parser> parser = std::make_unique<Parser::RegexParser>();
+        /*
+         * @brief Validate policy before preparing the selected parser for a configuration candidate.
+         *
+         * @param[in] candidate Decoded replacement snapshot supplied by Config::Configuration.
+         * @throws std::exception If policy validation or parser preparation fails.
+         * @note Mutates only parser-owned state after policy validation. The configuration
+         *       controller commits its active snapshot only after this callback returns.
+         */
+        Config::Configuration configuration(settings.phrases, [&](const json& candidate) {
+            validateControlConfiguration(candidate);
+            parser->configure(candidate);
+        });
 
         if(settings.checkPhrases) {
             std::cout << "Phrase configuration is valid\n";
             return 0;
         }
 
-        loadEnvironment();
-        const char* configuredUrl = std::getenv("HOME_ASSISTANT_URL");
-        HomeAssistant assistant(configuredUrl ? configuredUrl : "http://wyvern:8123",
-                                std::getenv("HOME_ASSISTANT_TOKEN"));
-        Parser::Options options;
+        const auto connection = readHomeAssistantSettings();
+        HomeAssistant assistant(connection.url, connection.token);
+        Commands::Executor& executor = assistant;
 
         if(settings.listDevices) {
             for(const auto& device : findAvailableDevices(assistant.getStates())) {
@@ -164,49 +133,98 @@ int main(int argc, char* argv[]) {
         }
 
         if(settings.parseOnly) {
-            return processTranscript(settings.parseText, assistant, phrases, options, false) ? 0 : 1;
+            const auto context = buildCommandContext(assistant.getStates());
+            const auto command = parser->parse(settings.parseText, context);
+            debugPrintTranscript(settings.parseText, command);
+            if(command.is_null()) {
+                return 1;
+            }
+
+            return reportResult(executor.check(command, configuration.data()), true) ? 0 : 1;
         }
 
-        populateDeviceAliases(assistant.getStates(), options);
-        Transcriber transcriber(settings);
+        WhisperTranscriber transcriber(settings.model, settings.threads, settings.gpu);
         std::signal(SIGINT, handleSignal);
         std::signal(SIGTERM, handleSignal);
         Microphone microphone;
-        UtteranceBuffer utterances(settings);
-        Samples block;
+        UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
+        Audio::Samples block;
         std::cout << "Listening. Press Ctrl+C to stop.\n";
         auto lastReload = std::chrono::steady_clock::now();
         string lastReloadError;
+        /*
+         * @brief Poll configuration explicitly and report changes or newly changed errors.
+         *
+         * Retains the previous valid snapshot on failure and remembers the last error
+         * printed so an unchanged failure is not emitted for every audio block.
+         *
+         * @note Reads the configuration file, may reconfigure the parser, writes diagnostic
+         *       output, and updates the captured last-error string.
+         */
+        const auto reloadConfiguration = [&] {
+            if(configuration.reloadIfChanged()) {
+                std::cout << "Reloaded phrase configuration\n";
+            }
 
-        while(running) {
+            if(configuration.error() != lastReloadError && !configuration.error().empty()) {
+                std::cerr << "Keeping previous configuration: " << configuration.error() << '\n';
+            }
+
+            lastReloadError = configuration.error();
+        };
+
+        while(true) {
+            const bool stopping = !running;
             const auto now = std::chrono::steady_clock::now();
 
             if(now - lastReload >= std::chrono::seconds(1)) {
-                if(phrases.reloadIfChanged()) {
-                    std::cout << "Reloaded phrase configuration\n";
-                }
-
-                if(phrases.reloadError() != lastReloadError && !phrases.reloadError().empty()) {
-                    std::cerr << "Keeping previous phrases: " << phrases.reloadError() << '\n';
-                }
-
-                lastReloadError = phrases.reloadError();
+                reloadConfiguration();
                 lastReload = now;
             }
 
-            bool discontinuity = false;
+            std::optional<Audio::Samples> completed;
 
-            if(!microphone.read(block, discontinuity)) {
-                continue;
+            if(stopping) {
+                completed = utterances.finish();
+            } else {
+                bool discontinuity = false;
+
+                if(!microphone.read(block, discontinuity)) {
+                    continue;
+                }
+
+                completed = utterances.append(block, discontinuity);
+
+                if(utterances.event() == UtteranceBuffer::Event::Discontinuity) {
+                    std::cerr << "Microphone overflow: discarding incomplete command\n";
+                } else if(utterances.event() == UtteranceBuffer::Event::TooLong) {
+                    std::cerr << "Utterance exceeded 15 seconds; waiting for silence\n";
+                }
             }
 
-            if(auto audio = utterances.append(block, discontinuity)) {
-                processUtterance(std::move(*audio), transcriber, assistant, phrases, options);
-            }
-        }
+            if(completed) {
+                const string text = transcriber.transcribe(std::move(*completed));
 
-        if(auto audio = utterances.finish()) {
-            processUtterance(std::move(*audio), transcriber, assistant, phrases, options);
+                if(text.find_first_not_of(" \t\r\n") != string::npos) {
+                    reloadConfiguration();
+
+                    try {
+                        const auto context = buildCommandContext(assistant.getStates());
+                        const auto command = parser->parse(text, context);
+                        debugPrintTranscript(text, command);
+
+                        if(!command.is_null()) {
+                            reportResult(executor.execute(command, configuration.data()), false);
+                        }
+                    } catch(const std::exception& error) {
+                        std::cerr << "Cannot prepare command: " << error.what() << '\n';
+                    }
+                }
+            }
+
+            if(stopping) {
+                break;
+            }
         }
     } catch(const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';

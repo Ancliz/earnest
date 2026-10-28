@@ -1,15 +1,19 @@
+/**
+ * @file
+ * @brief Home Assistant HTTP transport and structured execution outcomes.
+ */
+
 #include "home_assistant.hpp"
 #include "control_policy.hpp"
 
-#include <iostream>
 #include <stdexcept>
 
-using Parser::json;
+using Commands::json;
 using std::runtime_error;
 using std::string;
 
-HomeAssistant::HomeAssistant(const string& url, const char* token) : client(url) {
-    if(!token || !*token) {
+HomeAssistant::HomeAssistant(const string& url, const string& token) : client(url) {
+    if(token.empty()) {
         throw runtime_error("Set HOME_ASSISTANT_TOKEN before starting voice control");
     }
 
@@ -55,76 +59,55 @@ json HomeAssistant::getServices() {
     return services;
 }
 
-bool HomeAssistant::post(const json& request, const json& configuration) {
-    string problem;
-
+Commands::ExecutionResult HomeAssistant::check(const json& request, const json& configuration) {
     try {
-        problem = validateCommand(request, getStates(), configuration);
-    } catch(const std::exception& error) {
-        std::cerr << "Cannot verify live device state: " << error.what() << '\n';
-        return false;
-    }
+        auto result = prepareCommand(request, getStates(), configuration);
 
-    if(!problem.empty()) {
-        std::cerr << "Command rejected: " << problem << '\n';
-        return false;
-    }
+        if(!result.success) {
+            return result;
+        }
 
-    const string endpoint = request["endpoint"].get<string>();
-    const auto& body = request["body"];
-
-    if(endpoint != "/conversation/process") {
-        const string path = endpoint.substr(string("/services/").size());
+        const string path = result.request.at("endpoint").get<string>().substr(string("/services/").size());
         const auto separator = path.find('/');
         const string domain = path.substr(0, separator);
         const string service = path.substr(separator + 1);
-        bool available = false;
 
-        try {
-            for(const auto& entry : getServices()) {
-                if(entry.value("domain", string()) == domain && entry.at("services").contains(service)) {
-                    available = true;
-                }
+        for(const auto& entry : getServices()) {
+            if(entry.is_object() && entry.value("domain", string()) == domain && entry.contains("services") &&
+               entry["services"].is_object() && entry["services"].contains(service)) {
+                return result;
             }
-        } catch(const std::exception& error) {
-            std::cerr << "Cannot verify service availability: " << error.what() << '\n';
-            return false;
         }
 
-        if(!available) {
-            std::cerr << "Service is unavailable: " << path << '\n';
-            return false;
-        }
+        return {false, "Service is unavailable: " + path};
+    } catch(const std::exception& error) {
+        return {false, string("Cannot verify command: ") + error.what()};
+    }
+}
+
+Commands::ExecutionResult HomeAssistant::execute(const json& request, const json& configuration) {
+    auto result = check(request, configuration);
+
+    if(!result.success) {
+        return result;
     }
 
-    const auto response = client.Post("/api" + endpoint, body.dump(), "application/json");
+    try {
+        const string endpoint = result.request.at("endpoint").get<string>();
+        const auto response =
+            client.Post("/api" + endpoint, result.request.at("body").dump(), "application/json");
 
-    if(!response) {
-        std::cerr << "Home Assistant request failed: " << httplib::to_string(response.error()) << '\n';
-        return false;
-    }
-
-    if(response->status < 200 || response->status >= 300) {
-        std::cerr << response->status << ": " << response->body << '\n';
-        return false;
-    }
-
-    if(endpoint == "/conversation/process") {
-        const auto result = json::parse(response->body, nullptr, false);
-
-        if(result.is_discarded() || !result.is_object() || !result.contains("response") ||
-           !result["response"].is_object() || !result["response"].contains("response_type") ||
-           !result["response"]["response_type"].is_string()) {
-            std::cerr << "Home Assistant returned an invalid conversation response\n";
-            return false;
+        if(!response) {
+            return {false, "Home Assistant request failed: " + httplib::to_string(response.error())};
         }
 
-        if(result["response"].value("response_type", string()) == "error") {
-            std::cerr << "Home Assistant could not handle the command: " << result["response"] << '\n';
-            return false;
+        if(response->status < 200 || response->status >= 300) {
+            return {false, "Home Assistant returned HTTP " + std::to_string(response->status) + ": " +
+                               response->body};
         }
-    }
 
-    std::cout << "Command sent\n";
-    return true;
+        return result;
+    } catch(const std::exception& error) {
+        return {false, string("Home Assistant request failed: ") + error.what()};
+    }
 }

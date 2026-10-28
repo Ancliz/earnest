@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Argument validation, dotenv-style connection lookup, and usage output.
+ */
+
 #include "settings.hpp"
 
 #include <cmath>
@@ -8,13 +13,23 @@
 
 using std::runtime_error;
 using std::size_t;
+using std::string;
 
 Settings parseArguments(int argc, char* argv[]) {
     Settings settings;
     bool modelSet = false;
+    bool modeSet = false;
 
     for(int i = 1; i < argc; ++i) {
         const string arg = argv[i];
+
+        if(arg == "--list-devices" || arg == "--check-phrases" || arg == "--parse") {
+            if(modeSet) {
+                throw runtime_error("Choose only one of --list-devices, --check-phrases, or --parse");
+            }
+
+            modeSet = true;
+        }
 
         if(arg == "--list-devices" || arg == "--check-phrases") {
             settings.listDevices = arg == "--list-devices";
@@ -85,35 +100,71 @@ Settings parseArguments(int argc, char* argv[]) {
     return settings;
 }
 
-void loadEnvironment(const string& path) {
+/**
+ * @copydoc readHomeAssistantSettings(const std::string&)
+ */
+HomeAssistantSettings readHomeAssistantSettings(const string& path) {
     std::ifstream input(path);
+    HomeAssistantSettings settings;
     string line;
+    /*
+     * @brief Trim the whitespace accepted around dotenv keys and values.
+     *
+     * @param[in] value Source text to inspect without modification.
+     * @return Copy without leading/trailing spaces, tabs, CR, or LF; empty for whitespace.
+     */
+    const auto trim = [](const string& value) {
+        const auto first = value.find_first_not_of(" \t\r\n");
+        return first == string::npos ? string()
+                                     : value.substr(first, value.find_last_not_of(" \t\r\n") - first + 1);
+    };
 
     while(std::getline(input, line)) {
-        const auto equals = line.find('=');
+        line = trim(line);
 
-        if(line.empty() || line[0] == '#' || equals == string::npos) {
+        if(line.empty() || line[0] == '#') {
             continue;
         }
 
-        string key = line.substr(0, equals);
-        string value = line.substr(equals + 1);
-
-        if(key.compare(0, 7, "export ") == 0) {
-            key.erase(0, 7);
+        if(line.compare(0, 7, "export ") == 0) {
+            line = trim(line.substr(7));
         }
+
+        const auto equals = line.find('=');
+
+        if(equals == string::npos) {
+            throw runtime_error("Invalid environment-file entry");
+        }
+
+        const string key = trim(line.substr(0, equals));
+        string value = trim(line.substr(equals + 1));
 
         if(value.size() >= 2 && ((value.front() == '\"' && value.back() == '\"') ||
                                  (value.front() == '\'' && value.back() == '\''))) {
             value = value.substr(1, value.size() - 2);
         }
 
-        if(!std::getenv(key.c_str())) {
-            setenv(key.c_str(), value.c_str(), 0);
+        if(key == "HOME_ASSISTANT_URL") {
+            settings.url = value;
+        } else if(key == "HOME_ASSISTANT_TOKEN") {
+            settings.token = value;
         }
     }
+
+    if(const char* value = std::getenv("HOME_ASSISTANT_URL")) {
+        settings.url = value;
+    }
+
+    if(const char* value = std::getenv("HOME_ASSISTANT_TOKEN")) {
+        settings.token = value;
+    }
+
+    return settings;
 }
 
+/**
+ * @copydoc printUsage(const std::string&)
+ */
 void printUsage(const string& executable) {
     std::cout
         << "Usage: " << executable

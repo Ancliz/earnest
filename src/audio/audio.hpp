@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Shared mono audio sample representation and capture timing constants.
+ */
+
 #pragma once
 
 #include <vector>

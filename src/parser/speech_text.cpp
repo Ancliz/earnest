@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Transcript normalization and strict normalized spoken-number parsing.
+ */
+
 #include "detail.hpp"
 
 #include <cctype>
@@ -12,11 +17,17 @@ using std::regex;
 using std::string;
 using std::unordered_map;
 
+/**
+ * @copydoc Parser::Detail::trim(const std::string&)
+ */
 string trim(const string& text) {
     const auto first = text.find_first_not_of(' ');
     return first == string::npos ? "" : text.substr(first, text.find_last_not_of(' ') - first + 1);
 }
 
+/**
+ * @copydoc Parser::Detail::normalize(const std::string&)
+ */
 string normalize(const string& input) {
     string result;
     result.reserve(input.size());
@@ -45,6 +56,9 @@ string normalize(const string& input) {
 }
 
 // Deliberately strict number grammar: prevents junk or another command being swallowed.
+/**
+ * @copydoc Parser::Detail::level(std::string, double&)
+ */
 bool level(string text, double& value) {
     text = trim(text);
     bool percent = false;
@@ -154,6 +168,13 @@ bool level(string text, double& value) {
     const auto tens = small.find(text.substr(0, space));
     const auto units = small.find(text.substr(space + 1));
 
+    /*
+     * @brief Check whether captured words form one valid tens-plus-units number.
+     *
+     * @return True when both captured iterators exist, the first value is a multiple of
+     *         ten from twenty upward, and the second is a unit from one through nine.
+     * @note Examines captured lookup results without changing the number dictionary.
+     */
     const auto isValidCompoundNumber = [&] {
         return tens != small.end() && units != small.end() && tens->second >= 20 && tens->second % 10 == 0 &&
                units->second >= 1 && units->second <= 9;

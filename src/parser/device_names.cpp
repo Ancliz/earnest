@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Canonical aliases and bounded domain-scoped device resolution.
+ */
+
 #include "detail.hpp"
 
 #include <algorithm>
@@ -12,7 +17,19 @@ using std::regex;
 using std::size_t;
 using std::vector;
 
-// Bounded edit distance; called only for configured device aliases after a rule matches.
+/**
+ * @brief Compute edit distance with early rejection beyond a small matching threshold.
+ *
+ * Uses two dynamic-programming rows for insertion, deletion, and substitution.
+ * Rejects immediately when lengths differ too much or a completed row cannot
+ * reach the permitted threshold.
+ *
+ * @param[in] a First normalized alias string.
+ * @param[in] b Second normalized alias string.
+ * @param[in] limit Largest distance relevant to the caller's fuzzy-match decision.
+ * @return Exact distance when within limit; any value above limit means rejection.
+ * @note Allocates local rows only and does not modify either string or alias context.
+ */
 size_t distance(const string& a, const string& b, size_t limit) {
     if(a.size() > b.size() + limit || b.size() > a.size() + limit) {
         return limit + 1;
@@ -49,9 +66,11 @@ bool resolveDevice(const string& captured, const string& domain, const Options& 
     target = nullptr;
 
     if(name.empty()) {
-        if(!options.defaultDevice.empty() &&
-           (domain == "media_player" ||
-            options.defaultDevice.compare(0, domain.size() + 1, domain + ".") == 0)) {
+        const bool sameDomain = options.defaultDevice.compare(0, domain.size() + 1, domain + ".") == 0;
+        const bool unresolvedMediaName = domain == "media_player" && !options.strictDevices &&
+                                         options.defaultDevice.find('.') == string::npos;
+
+        if(!options.defaultDevice.empty() && (sameDomain || unresolvedMediaName)) {
             target = options.defaultDevice;
         }
 
@@ -113,11 +132,17 @@ bool resolveDevice(const string& captured, const string& domain, const Options& 
 }
 
 } // namespace Detail
+} // namespace Parser
 
-using Detail::normalize;
-using Detail::resolveDevice;
-using Detail::trim;
+namespace Commands {
+using ::Parser::Detail::normalize;
+using ::Parser::Detail::resolveDevice;
+using ::Parser::Detail::trim;
+using std::string;
 
+/**
+ * @copydoc Commands::normalizeDeviceName(std::string)
+ */
 string normalizeDeviceName(string name) {
     name = normalize(name);
 
@@ -132,9 +157,21 @@ string normalizeDeviceName(string name) {
     return trim(name);
 }
 
-json resolveEntityId(const string& name, const string& domain, const Options& options) {
+/**
+ * @brief Resolve a domain-scoped device name using the shared alias-matching rules.
+ *
+ * Delegates to the same resolver used by regex parsing, including default-target,
+ * strict-discovery, bounded fuzzy-matching, and ambiguity behavior.
+ *
+ * @param[in] name Captured spoken target; empty input requests default handling.
+ * @param[in] domain Requested Home Assistant entity domain.
+ * @param[in] options Supplied alias/state context and matching preferences.
+ * @return Resolved or permitted unresolved string, or JSON null when no target can be supplied.
+ * @note Performs no discovery, file access, logging, or command execution.
+ */
+json resolveEntityId(const string& name, const string& domain, const Context& options) {
     json target;
     return resolveDevice(name, domain, options, target) ? target : json(nullptr);
 }
 
-} // namespace Parser
+} // namespace Commands

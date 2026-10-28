@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Regression suite for utterance buffer behavior.
+ */
+
 #include "audio/utterance_buffer.hpp"
 
 #include <iostream>
@@ -6,15 +11,31 @@
 using Audio::blockSamples;
 using Audio::Samples;
 
+/**
+ * @brief Exercise utterance completion, preroll, noise filtering, and discard recovery.
+ *
+ * Feeds synthetic 100 ms quiet/loud blocks through segmentation, checks explicit
+ * shutdown flushing, and verifies that discontinuities and overlong speech never
+ * emit incomplete commands.
+ *
+ * @return Zero when every assertion completes.
+ * @throws std::runtime_error If a buffering expectation fails.
+ * @note Uses no microphone, model, configuration file, or network service.
+ */
 int main() {
+    /*
+     * @brief Raise a descriptive assertion failure for the synthetic audio fixture.
+     *
+     * @param[in] valid Whether the expected segmentation behavior occurred.
+     * @param[in] description Assertion description used as the exception message.
+     * @throws std::runtime_error If valid is false.
+     */
     const auto check = [](bool valid, const char* description) {
         if(!valid) {
             throw std::runtime_error(description);
         }
     };
-    Settings settings;
-    settings.silenceMs = 200;
-    UtteranceBuffer buffer(settings);
+    UtteranceBuffer buffer(0.01f, 200);
     const Samples quiet(blockSamples, 0);
     const Samples loud(blockSamples, 0.1f);
     check(!buffer.append(quiet, false), "silence is not speech");

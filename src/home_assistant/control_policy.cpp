@@ -1,4 +1,10 @@
+/**
+ * @file
+ * @brief Domain/capability validation, volume resolution, and AC airflow guards.
+ */
+
 #include "control_policy.hpp"
+#include "services.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,11 +12,21 @@
 #include <set>
 #include <stdexcept>
 
-using Parser::json;
+using Commands::json;
 using std::string;
 
 namespace {
 
+/**
+ * @brief Locate the first object record with a matching entity ID in a supplied snapshot.
+ *
+ * @param[in] states Entity-state collection to search in iteration order.
+ * @param[in] entity Exact entity ID to locate.
+ * @return Borrowed pointer into states, or nullptr when absent. Valid only while the
+ *         underlying JSON storage remains alive and unchanged.
+ * @throws nlohmann::json::exception If an examined entity_id has an incompatible type.
+ * @note Performs no HTTP and leaves the snapshot unchanged.
+ */
 const json* findState(const json& states, const string& entity) {
     for(const auto& state : states) {
         if(state.is_object() && state.value("entity_id", string()) == entity) {
@@ -21,10 +37,29 @@ const json* findState(const json& states, const string& entity) {
     return nullptr;
 }
 
+/**
+ * @brief Test whether a JSON array contains the supplied string value.
+ *
+ * @param[in] list Candidate JSON array; other JSON types are treated as nonmembers.
+ * @param[in] value String to compare using exact JSON equality.
+ * @return True if list is an array containing value, otherwise false.
+ */
 bool member(const json& list, const string& value) {
     return list.is_array() && std::find(list.begin(), list.end(), value) != list.end();
 }
 
+/**
+ * @brief Interpret a climate-zone or positioned-cover snapshot as open or enabled.
+ *
+ * Climate entities count as enabled for states other than off, unknown, and
+ * unavailable. Other entities need a numeric attributes.current_position above
+ * zero. A missing snapshot pointer counts as closed.
+ *
+ * @param[in] state Borrowed entity-state record, or nullptr for an absent entity.
+ * @return Whether the supplied snapshot counts as an open zone for airflow checks.
+ * @throws nlohmann::json::exception If an inspected typed field is malformed.
+ * @note Does not query physical position or infer actual airflow.
+ */
 bool isOpen(const json* state) {
     if(!state) {
         return false;
@@ -45,6 +80,10 @@ bool isOpen(const json* state) {
 } // namespace
 
 void validateControlConfiguration(const json& configuration) {
+    if(!configuration.is_object()) {
+        throw std::runtime_error("Control configuration must be an object");
+    }
+
     if(!configuration.contains("advantage_air")) {
         return;
     }
@@ -90,7 +129,22 @@ void validateControlConfiguration(const json& configuration) {
     }
 }
 
-string validateCommand(const json& request, const json& states, const json& configuration) {
+/**
+ * @brief Validate an already resolved service request against explicit snapshots.
+ *
+ * Rejects conversation delegation and unresolved targets, enforces the shared
+ * service-field catalog and required fields, validates numeric/capability details,
+ * and applies verified AdvantageAir preset/constant-zone constraints.
+ *
+ * @param[in] request Concrete endpoint/body request; internal intents must be resolved first.
+ * @param[in] states Entity-state array used for all target and airflow checks.
+ * @param[in] configuration Structurally validated application control policy.
+ * @return Empty string for an accepted request, otherwise its rejection reason.
+ * @throws nlohmann::json::exception For malformed inspected fields; prepareCommand()
+ *                                  catches these before returning to the executor.
+ * @note Does not fetch state, change zones automatically, or send the request.
+ */
+static string validateServiceCommand(const json& request, const json& states, const json& configuration) {
     if(!request.is_object() || !request.contains("endpoint") || !request["endpoint"].is_string() ||
        !request.contains("body") || !request["body"].is_object()) {
         return "Invalid request";
@@ -99,9 +153,12 @@ string validateCommand(const json& request, const json& states, const json& conf
     const string endpoint = request["endpoint"].get<string>();
     const auto& body = request["body"];
 
-    // The parser only delegates validated media-volume deltas, never HVAC or installer commands.
     if(endpoint == "/conversation/process") {
-        return "";
+        return "Conversation requests are not executable commands";
+    }
+
+    if(!states.is_array()) {
+        return "Device states must be an array";
     }
 
     if(!body.contains("entity_id") || !body["entity_id"].is_string()) {
@@ -130,36 +187,21 @@ string validateCommand(const json& request, const json& states, const json& conf
     }
 
     const string service = endpoint.substr(expected.size());
-    static const std::map<string, std::set<string>> fields = {
-        {"turn_on", {"brightness_pct"}},
-        {"turn_off", {}},
-        {"volume_set", {"volume_level"}},
-        {"volume_up", {}},
-        {"volume_down", {}},
-        {"volume_mute", {"is_volume_muted"}},
-        {"media_play", {}},
-        {"media_pause", {}},
-        {"media_stop", {}},
-        {"media_play_pause", {}},
-        {"media_next_track", {}},
-        {"media_previous_track", {}},
-        {"set_temperature", {"temperature"}},
-        {"set_hvac_mode", {"hvac_mode"}},
-        {"set_fan_mode", {"fan_mode"}},
-        {"set_percentage", {"percentage"}},
-        {"open_cover", {}},
-        {"close_cover", {}},
-        {"set_cover_position", {"position"}},
-        {"select_option", {"option"}}
-    };
+    const auto* definition = HomeServices::find(domain, service);
 
-    if(!fields.count(service)) {
-        return "Unsupported service";
+    if(!definition) {
+        return "Unsupported service for device domain";
     }
 
     for(const auto& field : body.items()) {
-        if(field.key() != "entity_id" && !fields.at(service).count(field.key())) {
+        if(field.key() != "entity_id" && !definition->fields.count(field.key())) {
             return "Unexpected service field: " + field.key();
+        }
+    }
+
+    for(const auto& field : definition->required) {
+        if(!body.contains(field)) {
+            return "Missing service field: " + field;
         }
     }
 
@@ -173,6 +215,10 @@ string validateCommand(const json& request, const json& states, const json& conf
         }
 
         const double value = body[field].get<double>();
+        if(field == "temperature") {
+            continue; // The device supplies its own temperature range and units below.
+        }
+
         const double maximum = field == "volume_level" ? 1 : 100;
 
         if(value < 0 || value > maximum) {
@@ -202,7 +248,8 @@ string validateCommand(const json& request, const json& states, const json& conf
 
         if(service == "set_temperature") {
             if(!(supported & 1)) {
-                return "This climate entity does not support a single temperature setpoint in its current preset";
+                return "This climate entity does not support a single temperature setpoint in its current "
+                       "preset";
             }
 
             if(!body.contains("temperature") || !attributes.contains("min_temp") ||
@@ -215,7 +262,8 @@ string validateCommand(const json& request, const json& states, const json& conf
             const double max = attributes["max_temp"].get<double>();
             const double step = attributes.value("target_temp_step", 1.0);
 
-            if(value < min || value > max || step <= 0 ||
+            if(!std::isfinite(min) || !std::isfinite(max) || !std::isfinite(step) || min > max ||
+               value < min || value > max || step <= 0 ||
                std::abs((value - min) / step - std::round((value - min) / step)) > 1e-6) {
                 return "Temperature is outside the device range or step";
             }
@@ -338,4 +386,56 @@ string validateCommand(const json& request, const json& states, const json& conf
     }
 
     return "";
+}
+
+Commands::ExecutionResult prepareCommand(const json& request, const json& states, const json& configuration) {
+    try {
+        validateControlConfiguration(configuration);
+        json resolved = request;
+
+        if(request.is_object() &&
+           request.value("endpoint", string()) == "/commands/media_player/adjust_volume") {
+            const auto& body = request.at("body");
+
+            if(!body.is_object() || body.size() != 2 || !body.contains("entity_id") ||
+               !body["entity_id"].is_string() || !body.contains("amount") || !body["amount"].is_number()) {
+                return {false, "Invalid relative-volume command"};
+            }
+
+            const string entity = body["entity_id"].get<string>();
+            const double amount = body["amount"].get<double>();
+            const auto* state = findState(states, entity);
+
+            if(entity.compare(0, 13, "media_player.") != 0 || !std::isfinite(amount) ||
+               std::abs(amount) > 1 || !state || !state->contains("attributes") ||
+               !state->at("attributes").is_object()) {
+                return {false, "Cannot resolve relative-volume command"};
+            }
+
+            const auto& attributes = state->at("attributes");
+
+            if(!attributes.contains("volume_level") || !attributes["volume_level"].is_number()) {
+                return {false, "Current volume is unavailable"};
+            }
+
+            const double current = attributes["volume_level"].get<double>();
+
+            if(!std::isfinite(current) || current < 0 || current > 1) {
+                return {false, "Current volume is invalid"};
+            }
+
+            resolved = {
+                {"endpoint", "/services/media_player/volume_set"},
+                {"body", {{"entity_id", entity}, {"volume_level", std::clamp(current + amount, 0.0, 1.0)}}}};
+        }
+
+        const string problem = validateServiceCommand(resolved, states, configuration);
+        return {problem.empty(), problem, std::move(resolved)};
+    } catch(const std::exception& error) {
+        return {false, string("Invalid command, state, or policy: ") + error.what()};
+    }
+}
+
+string validateCommand(const json& request, const json& states, const json& configuration) {
+    return prepareCommand(request, states, configuration).error;
 }

@@ -1,7 +1,12 @@
+/**
+ * @file
+ * @brief Preroll, silence boundaries, and incomplete-utterance recovery.
+ */
+
 #include "utterance_buffer.hpp"
 
 #include <cmath>
-#include <iostream>
+#include <stdexcept>
 #include <utility>
 
 using Audio::sampleRate;
@@ -14,8 +19,12 @@ void UtteranceBuffer::clear() {
     voicedBlocks = silentBlocks = 0;
 }
 
-UtteranceBuffer::UtteranceBuffer(const Settings& settings)
-    : silenceBlocks((settings.silenceMs + 99) / 100), threshold(settings.threshold) {}
+UtteranceBuffer::UtteranceBuffer(float threshold, int silenceMs)
+    : silenceBlocks((silenceMs + 99) / 100), threshold(threshold) {
+    if(!std::isfinite(threshold) || threshold <= 0 || threshold >= 1 || silenceMs < 200 || silenceMs > 3000) {
+        throw std::invalid_argument("Invalid utterance threshold or silence duration");
+    }
+}
 
 optional<Samples> UtteranceBuffer::finish() {
     optional<Samples> completed;
@@ -29,8 +38,10 @@ optional<Samples> UtteranceBuffer::finish() {
 }
 
 optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinuity) {
+    lastEvent = Event::None;
+
     if(discontinuity) {
-        std::cerr << "Microphone overflow: discarding incomplete command\n";
+        lastEvent = Event::Discontinuity;
         clear();
         discardUntilSilence = true;
     }
@@ -81,7 +92,7 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
     }
 
     if(audio.size() >= 15 * sampleRate) {
-        std::cerr << "Utterance exceeded 15 seconds; waiting for silence\n";
+        lastEvent = Event::TooLong;
         clear();
         discardUntilSilence = true;
     }

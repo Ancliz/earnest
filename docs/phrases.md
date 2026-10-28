@@ -40,9 +40,12 @@ as editable regex rules with `device_group` and `value_group` capture indexes.
 Noncapturing groups `(?:...)` do not affect those indexes. `value_type` is `volume`,
 `percent`, or `temperature`; regex numeric output is also available as `{value}`.
 
-An explicit `relative: true` on a media-player rule delegates a captured amount to
-`/conversation/process` with the original text. An omitted optional amount uses
-the direct service. HVAC commands are never delegated to a conversation agent.
+An explicit `relative: true` on a media-player volume-up/down rule produces an
+internal `/commands/media_player/adjust_volume` intent with `entity_id` and a
+signed, normalized `amount`. The executor reads the current volume immediately
+before execution, clamps the result to 0–1, and posts `volume_set`. A missing
+current volume rejects the command. An omitted optional amount uses the direct
+volume-up/down service. Arbitrary `/conversation/process` requests are rejected.
 
 Rule order determines the first valid interpretation within a domain. Matches
 that resolve to different commands across domains are rejected, so a speaker and
@@ -72,36 +75,54 @@ are not fetched by this application.
 ## C++ API
 
 ```cpp
-HomeAssistant assistant("http://wyvern:8123", std::getenv("HOME_ASSISTANT_TOKEN"));
-auto states = assistant.getStates();
-auto devices = findAvailableDevices(states); // Available controllable entities.
-Parser::Options options;
-populateDeviceAliases(states, options);
-auto id = Parser::resolveEntityId("AC", "climate", options); // String or null.
+std::unique_ptr<Commands::Parser> parser = std::make_unique<Parser::RegexParser>();
+Config::Configuration configuration("config/phrases.yaml", [&](const Commands::json& candidate) {
+    validateControlConfiguration(candidate);
+    parser->configure(candidate);
+});
+HomeAssistant assistant("http://wyvern:8123", token);
+Commands::Executor& executor = assistant;
 
-Parser::Engine phrases("config/phrases.yaml");
-phrases.reloadIfChanged();
-auto request = phrases.parse("set master bedroom temperature to twenty two", options);
+const auto states = assistant.getStates();
+const auto context = buildCommandContext(states);
+const auto command = parser->parse("set master bedroom temperature to twenty two", context);
 // {"endpoint":"/services/climate/set_temperature",
 //  "body":{"entity_id":"climate.ac_master_bed","temperature":22}}
+
+// Explicitly choose either a read-only preview or execution:
+const auto preview = executor.check(command, configuration.data());
+// const auto result = executor.execute(command, configuration.data());
 ```
 
-`Engine::reload()` throws on invalid config and retains the old snapshot.
-`reloadIfChanged()` returns true only when a new snapshot was accepted; inspect
-`reloadError()` after failure. `addPhrase(ruleId, phrase)` appends a validated
-in-memory phrase. Save the phrase in YAML to persist it; the next file reload
-replaces in-memory additions. Engine mutation/parsing is used on the application's
-main thread; synchronize externally if sharing an Engine between threads.
+`Commands::Parser` defines `configure(configuration)` and `parse(text, context)`.
+The regex implementation accepts a decoded configuration, compiles rules once,
+and does no file/network access. `configure` commits only after all rules compile.
+An LLM adapter implements the same interface; selecting it does not change the
+transcriber or executor. No LLM adapter is included yet.
 
-`Parser::parse(text, options)` remains a convenience wrapper around the default
-file. The default path is set to the source project's `config/phrases.yaml` at build time;
-pass `--phrases FILE` or construct an Engine with another path to override it.
+`Config::Configuration` performs file reads and reloads. Its application callback
+validates control policy before configuring the selected parser. `reload()` throws
+on an invalid candidate; `reloadIfChanged()` retains the previous configuration and
+reports failure via `error()`. Call it explicitly from the app's timer/before parsing.
+`RegexParser::addPhrase(ruleId, phrase)` adds a validated in-memory phrase; save it
+in YAML to persist it. The next configuration update replaces in-memory additions.
+Configuration and parsing run on the main thread; synchronize externally if sharing
+these mutable objects between threads.
 
-`validateCommand(request, states, configuration)` returns an empty string when a
-request is permitted, or an explanation. `HomeAssistant::post(request, configuration)`
-fetches fresh state, applies that validation, checks service availability, then
-posts once. There are no automatic retries, mode substitutions, or zone-opening
-sequences. Errors do not trigger a fallback through Assist.
+The hidden global `Parser::parse` convenience wrapper and file-owning `Engine`
+were removed. Use an explicit parser instance. `Config::defaultFile()` supplies
+the source project's `config/phrases.yaml` path, or pass `--phrases FILE`.
+
+`prepareCommand(request, states, configuration)` is pure: it resolves relative
+volume and validates against supplied snapshots. It returns an `ExecutionResult`
+with `success`, `error`, and the resolved `request`. `validateCommand` returns its
+error string for callers only interested in validation. Invalid request/state/policy
+JSON returns a rejection instead of escaping as a JSON exception.
+
+`HomeAssistant::check` queries fresh state and service availability without posting.
+`execute` uses that same check before posting exactly once. It returns errors to the
+caller without logging, retrying, substituting modes, or opening zones automatically.
+The executor validates commands independently of the parser that supplied them.
 
 ## CLI tools
 
@@ -113,9 +134,11 @@ sequences. Errors do not trigger a fallback through Assist.
 ```
 
 `--check-phrases` needs no token/model/network. `--list-devices` and `--parse` use
-read-only state queries, load no model, and send no control requests. `--parse`
-prints the proposed request and any policy rejection. Environment variables take
+read-only queries, load no model, and send no control requests. `--parse`
+prints the proposed request, checks live capabilities and service availability,
+and prints the resolved request or rejection. Environment variables take
 precedence over values in the ignored `.env` file in the current directory.
+Reading that file returns connection settings and does not call `setenv`.
 Use `HOME_ASSISTANT_TOKEN` and optionally `HOME_ASSISTANT_URL` (full URL including
 port, default `http://wyvern:8123`).
 
@@ -123,18 +146,21 @@ port, default `http://wyvern:8123`).
 
 | Path | Responsibility |
 | --- | --- |
-| `src/app/main.cpp` | CLI dispatch, Whisper transcription, command processing, and debug transcript printing |
-| `src/app/settings.*` | Arguments, environment loading, help |
+| `src/app/main.cpp` | Backend selection, explicit stage orchestration, and reporting |
+| `src/commands/command.hpp` | Parser/executor interfaces, context, and execution results |
+| `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
+| `src/speech/transcriber.hpp` | Whisper model lifetime and speech-to-text |
+| `src/app/settings.*` | Arguments, local connection settings, help |
 | `src/audio/microphone.*` | PortAudio capture and bounded capture queue |
 | `src/audio/utterance_buffer.*` | Speech energy, silence boundaries, overflow recovery |
 | `src/audio/audio.hpp` | Shared audio sample type and capture constants |
 | `src/home_assistant/home_assistant.*` | Authenticated HTTP state/service queries and posting |
 | `src/home_assistant/device_aliases.*` | Entity discovery and alias population |
-| `src/home_assistant/control_policy.*` | Live capability checks and verified AC airflow policy |
-| `src/parser/parser.*` | Public parsing API, active rule snapshot, and reloads |
+| `src/home_assistant/control_policy.*` | Pure command resolution, capability checks, and AC airflow policy |
+| `src/home_assistant/services.hpp` | Shared domain/service/field catalog |
+| `src/parser/parser.*` | Regex backend and compiled rule snapshot |
 | `src/parser/detail.hpp` | Shared internal parser declarations |
 | `src/parser/device_names.cpp` | Domain-scoped exact/fuzzy name resolution |
 | `src/parser/speech_text.cpp` | Text normalization and spoken numbers |
 | `src/parser/phrase_rules.cpp` | Phrase DSL, regex compilation, rule validation |
-| `src/parser/config_yaml.cpp` | YAML decoding |
 | `config/phrases.yaml` | User-editable phrases, aliases, and installation policy |

@@ -1,5 +1,10 @@
+/**
+ * @file
+ * @brief Phrase DSL translation and validation of compiled command rules.
+ */
+
 #include "detail.hpp"
-#include "home_assistant/control_policy.hpp"
+#include "home_assistant/services.hpp"
 
 #include <cctype>
 #include <set>
@@ -8,6 +13,21 @@
 namespace Parser::Detail {
 using std::size_t;
 
+/**
+ * @brief Translate phrase DSL text into a regex source while assigning capture indexes.
+ *
+ * Named slots become lazy captures, optional sections become noncapturing groups,
+ * and alternatives retain their grouping without changing slot numbering. Literal
+ * metacharacters are escaped and text bytes are lowercased. The caller compiles
+ * the returned source and enforces the top-level phrase length limit.
+ *
+ * @param[in] phrase DSL source, or an optional-section substring during recursion.
+ * @param[in,out] slots Named-slot map extended as captures are encountered.
+ * @return Regex source string; anchors are supplied by full-match usage.
+ * @throws std::runtime_error For unknown/repeated slots or malformed optional sections.
+ * @note On failure, slots may contain captures visited before the error; callers use
+ *       a candidate map and do not expose partially compiled patterns.
+ */
 string compilePhrase(const string& phrase, std::map<string, int>& slots) {
     string result;
 
@@ -117,16 +137,6 @@ std::vector<Rule> compileRules(const json& config) {
         }
     }
 
-    static const std::map<string, std::set<string>> services = {
-        {"media_player",
-         {"volume_set", "volume_up", "volume_down", "volume_mute", "media_play", "media_pause", "media_stop",
-          "media_play_pause", "media_next_track", "media_previous_track", "turn_on", "turn_off"}},
-        {"climate", {"turn_on", "turn_off", "set_temperature", "set_hvac_mode", "set_fan_mode"}},
-        {"light", {"turn_on", "turn_off"}},
-        {"switch", {"turn_on", "turn_off"}},
-        {"fan", {"turn_on", "turn_off", "set_percentage"}},
-        {"cover", {"open_cover", "close_cover", "set_cover_position"}},
-        {"select", {"select_option"}}};
     std::vector<Rule> rules;
     std::set<string> ids;
 
@@ -153,10 +163,10 @@ std::vector<Rule> compileRules(const json& config) {
         rule.values = row.value("values", json::object());
         rule.relative = row.value("relative", false);
 
-        if(rule.id.empty() || !ids.insert(rule.id).second || !services.count(rule.domain) ||
-           !services.at(rule.domain).count(rule.service) || !rule.body.is_object() ||
-           rule.body.contains("entity_id") || !rule.values.is_object() ||
-           (rule.relative && rule.domain != "media_player")) {
+        if(rule.id.empty() || !ids.insert(rule.id).second || !HomeServices::find(rule.domain, rule.service) ||
+           !rule.body.is_object() || rule.body.contains("entity_id") || !rule.values.is_object() ||
+           (rule.relative && (rule.domain != "media_player" ||
+                              (rule.service != "volume_up" && rule.service != "volume_down")))) {
             throw std::runtime_error("Invalid or duplicate phrase rule: " + rule.id);
         }
 
@@ -232,7 +242,6 @@ std::vector<Rule> compileRules(const json& config) {
         }
     }
 
-    validateControlConfiguration(config);
     return rules;
 }
 

@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Default-microphone resource management and background capture.
+ */
+
 #include "microphone.hpp"
 
 #include <chrono>
@@ -14,12 +19,19 @@ using std::thread;
 using std::unique_lock;
 
 namespace {
+/**
+ * @brief Translate a failing PortAudio status into an application exception.
+ *
+ * @param[in] error PortAudio return code to inspect.
+ * @throws std::runtime_error With PortAudio's error text when error is not paNoError.
+ * @note Does not print, close resources, or change capture state on its own.
+ */
 void checkAudio(PaError error) {
     if(error != paNoError) {
         throw runtime_error(Pa_GetErrorText(error));
     }
 }
-}
+} // namespace
 
 // Capture continues while transcription and HTTP requests run; the queue holds at most five seconds.
 void Microphone::capture() {
@@ -87,12 +99,15 @@ Microphone::Microphone() {
 Microphone::~Microphone() {
     stopping = true;
 
+    if(stream) {
+        Pa_AbortStream(stream);
+    }
+
     if(worker.joinable()) {
         worker.join();
     }
 
     if(stream) {
-        Pa_StopStream(stream);
         Pa_CloseStream(stream);
     }
 
@@ -102,6 +117,12 @@ Microphone::~Microphone() {
 bool Microphone::read(Samples& block, bool& discontinuity) {
     unique_lock<mutex> lock(audioMutex);
 
+    /*
+     * @brief Wake the waiting reader when captured audio or a stored error is available.
+     *
+     * @return True when the captured queue is nonempty or capture has recorded a failure.
+     * @note Evaluates the condition while audioMutex is held; does not consume the queue.
+     */
     ready.wait_for(lock, std::chrono::milliseconds(100),
                    [&] { return !pending.empty() || failure != paNoError; });
 
