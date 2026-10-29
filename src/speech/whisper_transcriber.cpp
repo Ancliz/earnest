@@ -58,3 +58,13 @@ string WhisperTranscriber::transcribe(Audio::Samples utterance) {
 
     return text;
 }
+
+void WhisperTranscriber::setVocabulary(const std::vector<string>& words) {
+    prompt.clear();
+
+    for(const auto& word : words) {
+        prompt += (prompt.empty() ? "" : ", ") + word;
+    }
+
+    parameters.initial_prompt = prompt.empty() ? nullptr : prompt.c_str();
+}

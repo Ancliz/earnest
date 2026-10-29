@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 using Commands::Command;
 using Commands::json;
@@ -217,8 +218,16 @@ int main(int argc, char* argv[]) {
             return previewText(settings.parseText, *parser, *executor) ? 0 : 1;
         }
 
-        std::unique_ptr<Speech::Transcriber> transcriber =
-            std::make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
+        auto whisper = std::make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
+        std::vector<string> deviceNames;
+
+        // Device names spelled as Home Assistant spells them help Whisper hear them.
+        for(const auto& device : executor->discoverDevices()) {
+            deviceNames.push_back(device.name);
+        }
+
+        whisper->setVocabulary(deviceNames);
+        std::unique_ptr<Speech::Transcriber> transcriber = std::move(whisper);
 
         listen(settings, *transcriber, *parser, *executor, configuration);
         

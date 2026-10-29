@@ -7,6 +7,8 @@
 
 #include "transcriber.hpp"
 #include <memory>
+#include <string>
+#include <vector>
 #include <whisper.h>
 
 /**
@@ -19,6 +21,9 @@ class WhisperTranscriber final : public Speech::Transcriber {
 
     /// Greedy, context-free decoding parameters shared by every utterance.
     whisper_full_params parameters;
+
+    /// Initial prompt text; parameters.initial_prompt points into it.
+    std::string prompt;
 
 public:
     /**
@@ -36,4 +41,12 @@ public:
      * @throws std::runtime_error If inference fails.
      */
     std::string transcribe(Audio::Samples utterance) override;
+
+    /**
+     * @brief Bias recognition towards words that commands use, such as device names.
+     *
+     * Whisper reads the words as text preceding each utterance, so it favours their spellings
+     * ("Q990" over "queue"). An empty list clears the bias.
+     */
+    void setVocabulary(const std::vector<std::string>& words);
 };
