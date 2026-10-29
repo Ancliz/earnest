@@ -46,7 +46,8 @@ public:
      * @brief Bias recognition towards words that commands use, such as device names.
      *
      * Whisper reads the words as text preceding each utterance, so it favours their spellings
-     * ("Q990" over "queue"). An empty list clears the bias.
+     * ("Q990" over "queue"). Words placed here can be dropped from the start of a transcript as
+     * if already said, so never include a wake word. An empty list clears the bias.
      */
     void setVocabulary(const std::vector<std::string>& words);
 };

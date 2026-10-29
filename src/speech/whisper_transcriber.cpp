@@ -66,5 +66,11 @@ void WhisperTranscriber::setVocabulary(const std::vector<string>& words) {
         prompt += (prompt.empty() ? "" : ", ") + word;
     }
 
+    // Whisper treats the prompt as speech just before the utterance; ending the sentence stops it
+    // assuming the last word was already said and skipping it in the transcript.
+    if(!prompt.empty()) {
+        prompt += ".";
+    }
+
     parameters.initial_prompt = prompt.empty() ? nullptr : prompt.c_str();
 }

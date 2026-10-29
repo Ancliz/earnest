@@ -4,17 +4,22 @@
  */
 
 #include "speech_text.hpp"
+#include "device_names.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <iterator>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace Grammar {
 using std::nullopt;
 using std::optional;
 using std::regex;
+using std::vector;
 
 namespace {
 /**
@@ -190,5 +195,55 @@ optional<double> parseLevel(string text) {
     }
 
     return (tens->second + units->second) / 100.0;
+}
+optional<string> stripWakeWord(const string& text, const string& wakePhrase) {
+    std::istringstream wakeStream(normalizeText(wakePhrase)), textStream(normalizeText(text));
+    const vector<string> wake{std::istream_iterator<string>(wakeStream), {}};
+    const vector<string> words{std::istream_iterator<string>(textStream), {}};
+
+    if(wake.empty()) {
+        return text;
+    }
+
+    static const vector<string> greetings = {"hey", "hi", "ok", "okay", "oi", "yo"};
+    const size_t start = !words.empty() && std::count(greetings.begin(), greetings.end(), words[0]) ? 1 : 0;
+    string target;
+
+    for(const auto& word : wake) {
+        target += word;
+    }
+
+    const auto limit = std::min<size_t>(3, std::max<size_t>(1, (target.size() + 1) / 2));
+
+    size_t bestCount = 0, bestEdits = limit + 1;
+
+    // Compare the phrase without spaces against one word fewer, as many, and one more, so a phrase
+    // Whisper splits ("jar vis") or merges still matches; the closest span wins.
+    for(size_t count = std::max<size_t>(1, wake.size() - 1); count <= wake.size() + 1 && start + count <= words.size(); ++count) {
+        string heard;
+
+        for(size_t i = start; i < start + count; ++i) {
+            heard += words[i];
+        }
+
+        const auto edits = editDistance(heard, target, limit);
+
+        if(edits < bestEdits) {
+            bestEdits = edits;
+            bestCount = count;
+        }
+    }
+
+    if(bestCount == 0) {
+        return nullopt;
+    }
+
+    string rest;
+
+    for(size_t i = start + bestCount; i < words.size(); ++i) {
+        rest += (rest.empty() ? "" : " ") + words[i];
+    }
+
+    return rest;
 }
 } // namespace Grammar

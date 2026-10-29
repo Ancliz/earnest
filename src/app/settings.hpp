@@ -55,6 +55,9 @@ struct Settings {
     /// Text given to --parse.
     std::string parseText;
 
+    /// Phrase that must open each spoken command; empty accepts every utterance.
+    std::string wakeWord;
+
     /// Lowest log level shown, as named by spdlog.
     std::string logLevel = "info";
 

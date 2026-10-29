@@ -7,6 +7,7 @@
 #include "config/configuration.hpp"
 #include "parser/device_names.hpp"
 #include "parser/regex_parser.hpp"
+#include "parser/speech_text.hpp"
 
 #include <iostream>
 
@@ -14,6 +15,7 @@ using Commands::Command;
 using Commands::Context;
 using Commands::Device;
 using Commands::json;
+using Grammar::stripWakeWord;
 using std::string;
 
 namespace {
@@ -194,5 +196,15 @@ int main() {
     check(!parser.parse("pause kichen", discovered), "a blocked name is not matched fuzzily");
     check(target(parser.parse("pause first", discovered)) == "media_player.first",
           "a repeated device keeps its unique names");
+    check(stripWakeWord(" Jarvis, turn on the Q990.", "jarvis") == string("turn on the q990"), "wake word opens a command");
+    check(stripWakeWord("Hey Jarvis turn off the light", "jarvis") == string("turn off the light"), "greeting before the wake word");
+    check(stripWakeWord("Travis pause the kitchen", "jarvis") == string("pause the kitchen"), "misheard wake word");
+    check(stripWakeWord("ok jar vis pause", "jarvis") == string("pause"), "split wake word");
+    check(stripWakeWord("hey house lights off", "hey house") == string("lights off"), "multi-word wake phrase");
+    check(stripWakeWord("Jarvis.", "jarvis") == string(), "wake word alone");
+    check(!stripWakeWord("turn on the Q990", "jarvis"), "speech without the wake word is ignored");
+    check(!stripWakeWord("pause jarvis", "jarvis"), "the wake word must come first");
+    check(!stripWakeWord("hey there turn it off", "jarvis"), "a different name is ignored");
+    check(stripWakeWord(" Pause.", "") == string(" Pause."), "no wake word accepts everything");
     std::cout << checks << " parser checks passed\n";
 }

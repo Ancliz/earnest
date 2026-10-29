@@ -46,4 +46,18 @@ bool hasPercentSuffix(const string& text);
  * @return Level within 0..1, or nullopt.
  */
 std::optional<double> parseLevel(string text);
+
+/**
+ * @brief Remove a fuzzily matched wake phrase from the start of a transcript.
+ *
+ * One leading greeting ("hey", "ok", ...) may precede the phrase, and the phrase may be misheard
+ * by up to half its letters (at most three) or split or merged across words, so "hey jarvis" and "travis,"
+ * both match "jarvis".
+ *
+ * @param[in] text Transcript.
+ * @param[in] wakePhrase Phrase that must open a command; empty disables the check.
+ * @return Normalized text after the phrase, possibly empty, or nullopt when it does not open with
+ *         the phrase. With no phrase, the text unchanged.
+ */
+std::optional<string> stripWakeWord(const string& text, const string& wakePhrase);
 } // namespace Grammar

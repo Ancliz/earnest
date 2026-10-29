@@ -8,6 +8,7 @@
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "ollama/ollama_parser.hpp"
+#include "parser/speech_text.hpp"
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 
@@ -122,11 +123,23 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
      * @brief Transcribe one utterance, then parse it against live devices and execute the result.
      */
     const auto executeUtterance = [&](Audio::Samples utterance) {
-        const string text = transcriber.transcribe(std::move(utterance));
+        const string heard = transcriber.transcribe(std::move(utterance));
 
-        if(text.find_first_not_of(" \t\r\n") == string::npos) {
+        if(heard.find_first_not_of(" \t\r\n") == string::npos) {
             return;
         }
+
+        const auto awake = Grammar::stripWakeWord(heard, settings.wakeWord);
+
+        if(!awake) {
+            spdlog::debug("Ignoring speech without the wake word: {}", heard);
+            return;
+        } else if(awake->empty()) {
+            spdlog::info("Wake word heard with no command");
+            return;
+        }
+
+        const string& text = *awake;
 
         reloadConfiguration();
 
