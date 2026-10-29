@@ -127,3 +127,9 @@ bool Microphone::read(Samples& block, bool& discontinuity) {
     pending.pop_front();
     return true;
 }
+
+void Microphone::discardPending() {
+    lock_guard<mutex> lock(audioMutex);
+    pending.clear();
+    lostAudio = false;
+}

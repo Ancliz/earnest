@@ -81,4 +81,12 @@ public:
      * @throws std::runtime_error If the capture thread hit a read error.
      */
     bool read(Audio::Samples& block, bool& discontinuity);
+
+    /**
+     * @brief Drop queued audio and any pending overflow, so reading resumes with live audio.
+     *
+     * For use after a long pause in reading, such as executing a command, when the queued audio
+     * is stale and may have overflowed.
+     */
+    void discardPending();
 };

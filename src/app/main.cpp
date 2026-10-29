@@ -167,6 +167,8 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
 
         if(utterance) {
             executeUtterance(std::move(*utterance));
+            // Audio queued while the command ran is stale, and a slow command overflows the queue.
+            microphone.discardPending();
         }
     }
 
