@@ -54,6 +54,12 @@ struct Settings {
     
     /// Text given to --parse.
     std::string parseText;
+
+    /// Lowest log level shown, as named by spdlog.
+    std::string logLevel = "info";
+
+    /// Log file appended to alongside the console; empty for console only.
+    std::string logFile;
 };
 
 /**
@@ -86,6 +92,6 @@ struct HomeAssistantSettings {
 HomeAssistantSettings readHomeAssistantSettings(const std::string& path = ".env");
 
 /**
- * @brief Print the supported command-line syntax.
+ * @brief Log the supported command-line syntax.
  */
 void printUsage(const std::string& executable);

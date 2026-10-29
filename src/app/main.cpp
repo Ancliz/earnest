@@ -8,11 +8,12 @@
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "ollama/ollama_parser.hpp"
+#include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 
 #include <chrono>
 #include <csignal>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -42,12 +43,12 @@ void requestStop(int) {
  * @brief Print recognized text and the command parsed from it.
  */
 void printParsed(const string& text, const optional<Command>& command) {
-    std::cout << "Final: " << text << '\n';
+    spdlog::info("Input: {}", text);
 
     if(command) {
-        std::cout << "Command recognized: " << json(*command) << '\n';
+        spdlog::info("Command recognized: {}", json(*command).dump());
     } else {
-        std::cout << "No command recognized\n";
+        spdlog::info("No command recognized");
     }
 }
 
@@ -58,11 +59,11 @@ void printParsed(const string& text, const optional<Command>& command) {
  */
 bool printResult(const Commands::Result& result, bool preview) {
     if(!result.success) {
-        std::cerr << (preview ? "Would reject: " : "Command failed: ") << result.error << '\n';
+        spdlog::warn("{}{}", preview ? "Would reject: " : "Command failed: ", result.error);
     } else if(preview) {
-        std::cout << "Would send: " << json(result.command) << '\n';
+        spdlog::info("Would send: {}", json(result.command).dump());
     } else {
-        std::cout << "Command sent\n";
+        spdlog::info("Command sent");
     }
 
     return result.success;
@@ -73,7 +74,7 @@ bool printResult(const Commands::Result& result, bool preview) {
  */
 void printDevices(const Commands::Devices& devices) {
     for(const auto& device : devices) {
-        std::cout << device.entityId << " | " << device.name << " | " << device.state << '\n';
+        spdlog::info("{} | {} | {}", device.entityId, device.name, device.state);
     }
 }
 
@@ -104,13 +105,13 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
     const auto reloadConfiguration = [&] {
         try {
             if(configuration.reloadIfChanged()) {
-                std::cout << "Reloaded phrase configuration\n";
+                spdlog::info("Reloaded phrase configuration");
             }
 
             lastReloadError.clear();
         } catch(const std::exception& error) {
             if(lastReloadError != error.what()) {
-                std::cerr << "Keeping previous configuration: " << error.what() << '\n';
+                spdlog::warn("Keeping previous configuration: {}", error.what());
             }
 
             lastReloadError = error.what();
@@ -137,11 +138,11 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
                 printResult(executor.execute(*command), false);
             }
         } catch(const std::exception& error) {
-            std::cerr << "Cannot prepare command: " << error.what() << '\n';
+            spdlog::error("Cannot prepare command: {}", error.what());
         }
     };
 
-    std::cout << "Listening. Press Ctrl+C to stop.\n";
+    spdlog::info("Listening. Press Ctrl+C to stop.");
     auto lastReload = Clock::now();
     Audio::Samples block;
 
@@ -160,9 +161,9 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
         auto utterance = utterances.append(block, discontinuity);
 
         if(utterances.event() == UtteranceBuffer::Event::Discontinuity) {
-            std::cerr << "Microphone overflow: discarding incomplete command\n";
+            spdlog::warn("Microphone overflow: discarding incomplete command");
         } else if(utterances.event() == UtteranceBuffer::Event::TooLong) {
-            std::cerr << "Utterance exceeded 15 seconds; waiting for silence\n";
+            spdlog::warn("Utterance exceeded 15 seconds; waiting for silence");
         }
 
         if(utterance) {
@@ -186,6 +187,7 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
 int main(int argc, char* argv[]) {
     try {
         const auto settings = parseArguments(argc, argv);
+        setupLogging(settings.logLevel, settings.logFile);
 
         if(settings.mode == Mode::Help) {
             printUsage(argv[0]);
@@ -203,7 +205,7 @@ int main(int argc, char* argv[]) {
         });
 
         if(settings.mode == Mode::CheckPhrases) {
-            std::cout << "Phrase configuration is valid\n";
+            spdlog::info("Phrase configuration is valid");
             return 0;
         }
 
@@ -234,7 +236,7 @@ int main(int argc, char* argv[]) {
         listen(settings, *transcriber, *parser, *executor, configuration);
         
     } catch(const std::exception& error) {
-        std::cerr << "Error: " << error.what() << '\n';
+        spdlog::error(error.what());
         return 1;
     }
 

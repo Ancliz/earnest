@@ -10,6 +10,7 @@ include(CTest)
 find_package(nlohmann_json 3.9 REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
+find_package(spdlog REQUIRED)
 pkg_check_modules(YAML REQUIRED IMPORTED_TARGET yaml-0.1)
 
 # Header-only command vocabulary and the parser/executor interfaces every stage shares.
@@ -33,13 +34,13 @@ add_library(home-assistant src/home_assistant/home_assistant.cpp src/home_assist
 target_link_libraries(home-assistant PUBLIC commands Threads::Threads)
 
 add_library(ollama-parser src/ollama/ollama.cpp)
-target_link_libraries(ollama-parser PUBLIC commands regex-parser Threads::Threads)
+target_link_libraries(ollama-parser PUBLIC commands regex-parser spdlog::spdlog Threads::Threads)
 
 add_library(audio src/audio/utterance_buffer.cpp)
 target_include_directories(audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-add_library(app-settings src/app/settings.cpp)
-target_link_libraries(app-settings PUBLIC configuration)
+add_library(app-settings src/app/settings.cpp src/app/logging.cpp)
+target_link_libraries(app-settings PUBLIC configuration spdlog::spdlog)
 
 foreach(target configuration regex-parser home-assistant audio app-settings)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)

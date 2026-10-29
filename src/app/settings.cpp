@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <type_traits>
 
@@ -92,6 +92,10 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.parseText = value();
         } else if(arg == "--phrases") {
             settings.phraseFile = value();
+        } else if(arg == "--log-level") {
+            settings.logLevel = value();
+        } else if(arg == "--log-file") {
+            settings.logFile = value();
         } else if(arg == "--cpu") {
             settings.gpu = false;
         } else if(arg == "--threads") {
@@ -170,7 +174,7 @@ HomeAssistantSettings readHomeAssistantSettings(const std::string& path) {
 }
 
 void printUsage(const std::string& executable) {
-    std::cout << "Usage: " << executable
-              << " [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--phrases FILE]"
-                 " [--list-devices | --check-phrases | --parse TEXT] [--help]\n";
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--phrases FILE] "
+                 "[--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
+                 executable);
 }

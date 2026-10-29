@@ -10,7 +10,7 @@
 #include "parser/speech_text.hpp"
 
 #include <algorithm>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <iterator>
 #include <limits>
 #include <regex>
@@ -190,7 +190,7 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
         request["tools"] = ordered_json::parse(tools.dump());
     }
 
-    std::cerr << "Ollama request:\n" << request.dump(2) << '\n';
+    spdlog::debug("Ollama request:\n{}", request.dump(2));
     const auto response = client.Post("/api/chat", request.dump(), "application/json");
 
     if(!response) {
@@ -198,7 +198,7 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
     }
 
     const auto reply = json::parse(response->body, nullptr, false);
-    std::cerr << "Ollama response (HTTP " << response->status << "):\n" << (reply.is_discarded() ? response->body : reply.dump(2)) << '\n';
+    spdlog::debug("Ollama response (HTTP {}):\n{}", response->status, reply.is_discarded() ? response->body : reply.dump(2));
 
     if(response->status != 200) {
         throw runtime_error("Ollama returned HTTP " + std::to_string(response->status));
@@ -274,7 +274,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         const auto unbacked = checkHeard(normalizeName(content.at("heard").get<string>()), request, command.entity, context);
 
         if(!unbacked.empty()) {
-            std::cerr << "Rejecting model's device choice: " << unbacked << '\n';
+            spdlog::warn("Rejecting model's device choice: {}", unbacked);
             return std::nullopt;
         }
 
@@ -287,7 +287,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             if(fields->allowed.count(field.key())) {
                 ++field;
             } else {
-                std::cerr << "Dropping unexpected data field: " << field.key() << '\n';
+                spdlog::debug("Dropping unexpected data field: {}", field.key());
                 field = command.data.erase(field);
             }
         }
@@ -309,7 +309,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             }
 
             if(!spoken) {
-                std::cerr << "Rejecting volume " << percent << ": not a number in the request\n";
+                spdlog::warn("Rejecting volume {}: not a number in the request", percent);
                 return std::nullopt;
             }
 
@@ -318,7 +318,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
         return command;
     } catch(const std::exception& error) {
-        std::cerr << "Ollama parse failed: " << error.what() << '\n';
+        spdlog::error("Ollama parse failed: {}", error.what());
         return std::nullopt;
     }
 }
