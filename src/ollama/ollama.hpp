@@ -10,6 +10,7 @@
 #include <string>
 
 using nlohmann::json;
+using nlohmann::ordered_json;
 using std::string;
 
 /**
@@ -37,8 +38,11 @@ public:
      * @brief Submit messages and optional tools to the chat endpoint.
      * @param[in] messages Chat messages with roles and content.
      * @param[in] tools Function-tool definitions; empty for a plain conversation.
+     * @param[in] format JSON schema the reply content must match, in the order fields should be
+     *                   generated; empty for free text.
      * @return Decoded response, including message content or tool calls.
      * @throws std::runtime_error For transport failures, non-200 statuses, or invalid JSON.
      */
-    json chat(const json& messages, const json& tools = json::array());
+    json chat(const json& messages, const json& tools = json::array(),
+              const ordered_json& format = ordered_json::object());
 };

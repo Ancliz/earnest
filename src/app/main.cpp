@@ -7,7 +7,7 @@
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
-#include "parser/regex_parser.hpp"
+#include "ollama/ollama_parser.hpp"
 #include "speech/whisper_transcriber.hpp"
 
 #include <chrono>
@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
 
         const auto connection = readHomeAssistantSettings();
         // Swap point: each stage only sees the others through the Commands and Speech interfaces.
-        std::unique_ptr<Commands::Parser> parser = std::make_unique<RegexParser>();
+        std::unique_ptr<Commands::Parser> parser = std::make_unique<OllamaParser>();
         std::unique_ptr<Commands::Executor> executor =
             std::make_unique<HomeAssistant>(connection.url, connection.token);
         Config::Configuration configuration(settings.phraseFile, [&](const json& candidate) {

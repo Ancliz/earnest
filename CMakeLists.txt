@@ -32,6 +32,9 @@ target_link_libraries(regex-parser PUBLIC commands)
 add_library(home-assistant src/home_assistant/home_assistant.cpp src/home_assistant/control_policy.cpp)
 target_link_libraries(home-assistant PUBLIC commands Threads::Threads)
 
+add_library(ollama-parser src/ollama/ollama.cpp)
+target_link_libraries(ollama-parser PUBLIC commands regex-parser Threads::Threads)
+
 add_library(audio src/audio/utterance_buffer.cpp)
 target_include_directories(audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
@@ -66,6 +69,6 @@ if(SMARTHOME_BUILD_VOICE)
     FetchContent_MakeAvailable(whisper)
     add_executable(voice-test src/app/main.cpp src/audio/microphone.cpp src/speech/whisper_transcriber.cpp)
     target_compile_options(voice-test PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(voice-test PRIVATE regex-parser home-assistant audio app-settings
+    target_link_libraries(voice-test PRIVATE regex-parser ollama-parser home-assistant audio app-settings
         whisper PkgConfig::PORTAUDIO Threads::Threads)
 endif()

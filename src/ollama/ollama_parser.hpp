@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief LLM parser backend (declaration only; implementation pending).
+ * @brief LLM parser backend.
  */
 
 #pragma once
@@ -8,7 +8,8 @@
 #include "ollama.hpp"
 #include "commands/command.hpp"
 
-using namespace Commands;
+using Commands::Command;
+using Commands::Context;
 
 /**
  * @brief Asks an Ollama model to choose the one command a text requests.
