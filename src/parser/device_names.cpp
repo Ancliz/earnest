@@ -15,11 +15,6 @@ namespace Grammar {
 using std::optional;
 using std::size_t;
 
-namespace {
-/**
- * @brief Levenshtein distance between two names, giving up once it must exceed a limit.
- * @return Exact distance when within limit, otherwise some value above limit.
- */
 size_t editDistance(const string& a, const string& b, size_t limit) {
     if(a.size() > b.size() + limit || b.size() > a.size() + limit) {
         return limit + 1;
@@ -51,7 +46,6 @@ size_t editDistance(const string& a, const string& b, size_t limit) {
 
     return previous[b.size()];
 }
-} // namespace
 
 DeviceNames::DeviceNames(const Commands::Context& context, const json& aliases)
     : defaultDevice(context.defaultDevice), fuzzy(context.fuzzyNames) {
