@@ -38,6 +38,9 @@ public:
 
     /**
      * @brief Transcribe one utterance, padding it to Whisper's one-second minimum.
+     *
+     * Segments whose words Whisper is unsure of are left out, so noise yields an empty transcript
+     * rather than a guessed vocabulary word.
      * @throws std::runtime_error If inference fails.
      */
     std::string transcribe(Audio::Samples utterance) override;
