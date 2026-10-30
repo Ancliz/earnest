@@ -28,7 +28,7 @@ Use GGML `.bin` models, not the Moonshine ONNX models or faster-whisper model fo
 
 ```sh
 ./build/voice-test --help
-./build/voice-test models/ggml-base.en.bin --threads 4 --threshold 0.01 --silence-ms 700 --cpu
+./build/voice-test models/ggml-base.en.bin --threads 4 --threshold 0.007 --silence-ms 700 --cpu
 ```
 
 The microphone must support mono float32 at 16 kHz. Capture runs separately from
@@ -41,9 +41,15 @@ are discarded until the next silence, rather than executing incomplete commands.
 Ctrl+C flushes the current buffered utterance and releases audio/model resources.
 Any audio still queued behind it when stopping is discarded.
 
-GPU use depends on how whisper.cpp was built; the default build supports CPU.
-For NVIDIA acceleration, configure with `-DGGML_CUDA=ON`; for Vulkan,
-`-DGGML_VULKAN=ON`. `--cpu` disables GPU use at runtime.
+The default build is CPU-only: without a GPU backend compiled in, transcription runs on the
+CPU whether or not `--cpu` is given. To use a GPU, configure with one backend and rebuild:
+
+- NVIDIA: `-DGGML_CUDA=ON` (needs the CUDA toolkit; on Arch, `cuda`, with `nvcc` in
+  `/opt/cuda/bin`).
+- Other GPUs: `-DGGML_VULKAN=ON` (needs the Vulkan headers and `shaderc`).
+
+CMake caches these options, so switch one off explicitly (`-DGGML_VULKAN=OFF`) rather than
+just leaving it out. In a GPU build, `--cpu` forces CPU transcription at runtime.
 
 ## Commands and discovery
 
@@ -84,7 +90,7 @@ To build just the parser and tests without downloading Whisper or needing PortAu
 
 ```sh
 cmake -S . -B build-parser -DSMARTHOME_BUILD_VOICE=OFF
-cmake --build build-parser -j 4
+cmake --build build-parser -j 8
 ctest --test-dir build-parser --output-on-failure
 ```
 
