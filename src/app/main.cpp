@@ -47,8 +47,9 @@ void printDevices(const Commands::Devices& devices) {
  * @return Whether a command was recognized and accepted.
  */
 bool previewText(const string& text, Commands::Parser& parser, Commands::Executor& executor) {
+    spdlog::info("Input: {}", text);
     const auto command = parser.parse(text, {executor.discoverDevices()});
-    logParsed(text, command);
+    logParsed(command);
     return command && logResult(executor.preview(*command), true);
 }
 

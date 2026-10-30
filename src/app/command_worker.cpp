@@ -14,9 +14,7 @@ using std::lock_guard;
 using std::mutex;
 using std::string;
 
-void logParsed(const string& text, const std::optional<Commands::Command>& command) {
-    spdlog::info("Input: {}", text);
-
+void logParsed(const std::optional<Commands::Command>& command) {
     if(command) {
         spdlog::info("Command recognized: {}", json(*command).dump());
     } else {
@@ -120,6 +118,7 @@ void CommandWorker::handle(Audio::Samples utterance) {
         return;
     }
 
+    spdlog::info("Input: {}", heard);
     const auto text = Grammar::stripWakeWord(heard, wakeWord);
 
     if(!text) {
@@ -132,7 +131,7 @@ void CommandWorker::handle(Audio::Samples utterance) {
 
     reloadConfiguration();
     const auto command = parser.parse(*text, {executor.discoverDevices()});
-    logParsed(*text, command);
+    logParsed(command);
 
     if(command) {
         logResult(executor.execute(*command), false);

@@ -17,9 +17,11 @@
 #include <thread>
 
 /**
- * @brief Log recognized text and the command parsed from it.
+ * @brief Log the command parsed from the text, or that none was recognized.
+ *
+ * Log the input itself before parsing, so it precedes anything the parser logs.
  */
-void logParsed(const std::string& text, const std::optional<Commands::Command>& command);
+void logParsed(const std::optional<Commands::Command>& command);
 
 /**
  * @brief Log a preview or execution outcome.
