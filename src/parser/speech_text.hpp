@@ -48,6 +48,15 @@ bool hasPercentSuffix(const string& text);
 std::optional<double> parseLevel(string text);
 
 /**
+ * @brief Whether a transcript holds no words, only sounds.
+ *
+ * True when everything left after removing Whisper's sound labels ("(laughs)", "[MUSIC]",
+ * "*sighs*") is laughter, a hum or a hesitation: "hahaha", "mhm", "mm hmm", "hmm", "uh", "um",
+ * "er", "ah", "oh" and drawn-out spellings of them. A transcript with any real word is speech.
+ */
+bool isNonSpeech(const string& text);
+
+/**
  * @brief Remove a fuzzily matched wake phrase from the start of a transcript.
  *
  * One leading greeting ("hey", "ok", ...) may precede the phrase, and the phrase may be misheard

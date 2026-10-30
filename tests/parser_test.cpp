@@ -15,6 +15,7 @@ using Commands::Command;
 using Commands::Context;
 using Commands::Device;
 using Commands::json;
+using Grammar::isNonSpeech;
 using Grammar::stripWakeWord;
 using std::string;
 
@@ -206,5 +207,14 @@ int main() {
     check(!stripWakeWord("pause jarvis", "jarvis"), "the wake word must come first");
     check(!stripWakeWord("hey there turn it off", "jarvis"), "a different name is ignored");
     check(stripWakeWord(" Pause.", "") == string(" Pause."), "no wake word accepts everything");
+
+    for(const auto* sound : {" Hahaha", " Ha ha.", "hehe", " Mhm.", "Mm-hmm", "Hmmm...", " Uh,", "Um", "Uh huh", "ohh", "Ahh!", "(laughs)", " [MUSIC]", "*sighs* hmm"}) {
+        check(isNonSpeech(sound), string("non-speech: ") + sound);
+    }
+
+    for(const auto* speech : {" Pause.", "Play", " Hey Jarvis", "AC", "Um, turn on the light", "oh pause it", "Home", "Hold"}) {
+        check(!isNonSpeech(speech), string("speech: ") + speech);
+    }
+
     std::cout << checks << " parser checks passed\n";
 }

@@ -196,6 +196,26 @@ optional<double> parseLevel(string text) {
 
     return (tens->second + units->second) / 100.0;
 }
+
+bool isNonSpeech(const string& text) {
+    static const regex labels(R"(\([^)]*\)|\[[^\]]*\]|\*[^*]*\*)");
+    // Laughter, hums and hesitations, allowing drawn-out spellings such as "hmmm" and "uhhh".
+    static const regex filler(R"((?:ha|he|hi|ho)+h?|m+(?:h+m+)*|h+m+|u+[hm]+|h+u+h+|e+r+m*|e+h+|a+h+|o+h*)");
+    std::istringstream stream(normalizeText(std::regex_replace(text, labels, " ")));
+    string word;
+
+    while(stream >> word) {
+        // Keep only letters, so "ha." and "\"hmm\"" are judged as words.
+        word.erase(std::remove_if(word.begin(), word.end(), [](unsigned char c) { return !std::isalpha(c); }), word.end());
+
+        if(!word.empty() && !std::regex_match(word, filler)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 optional<string> stripWakeWord(const string& text, const string& wakePhrase) {
     std::istringstream wakeStream(normalizeText(wakePhrase)), textStream(normalizeText(text));
     const vector<string> wake{std::istream_iterator<string>(wakeStream), {}};
