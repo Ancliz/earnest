@@ -4,29 +4,22 @@
  */
 
 #include "settings.hpp"
+#include "command_worker.hpp"
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "ollama/ollama_parser.hpp"
-#include "parser/speech_text.hpp"
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 
-#include <chrono>
 #include <csignal>
 #include <spdlog/spdlog.h>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
-using Commands::Command;
 using Commands::json;
-using std::optional;
 using std::string;
-
-/// Monotonic clock for the reload timer.
-using Clock = std::chrono::steady_clock;
 
 namespace {
 
@@ -38,36 +31,6 @@ volatile std::sig_atomic_t running = 1;
  */
 void requestStop(int) {
     running = 0;
-}
-
-/**
- * @brief Print recognized text and the command parsed from it.
- */
-void printParsed(const string& text, const optional<Command>& command) {
-    spdlog::info("Input: {}", text);
-
-    if(command) {
-        spdlog::info("Command recognized: {}", json(*command).dump());
-    } else {
-        spdlog::info("No command recognized");
-    }
-}
-
-/**
- * @brief Print a preview or execution outcome.
- * @param[in] preview Whether the result came from preview() rather than execute().
- * @return Whether the command was accepted.
- */
-bool printResult(const Commands::Result& result, bool preview) {
-    if(!result.success) {
-        spdlog::warn("{}{}", preview ? "Would reject: " : "Command failed: ", result.error);
-    } else if(preview) {
-        spdlog::info("Would send: {}", json(result.command).dump());
-    } else {
-        spdlog::info("Command sent");
-    }
-
-    return result.success;
 }
 
 /**
@@ -85,15 +48,15 @@ void printDevices(const Commands::Devices& devices) {
  */
 bool previewText(const string& text, Commands::Parser& parser, Commands::Executor& executor) {
     const auto command = parser.parse(text, {executor.discoverDevices()});
-    printParsed(text, command);
-    return command && printResult(executor.preview(*command), true);
+    logParsed(text, command);
+    return command && logResult(executor.preview(*command), true);
 }
 
 /**
- * @brief Listen until SIGINT or SIGTERM and execute the command in each utterance.
+ * @brief Listen until SIGINT or SIGTERM, handing each utterance to a CommandWorker.
  *
- * Reloads the phrase file every second and before each command. A stop request still
- * executes speech that is already buffered.
+ * This thread only captures and segments audio, so speech is still heard while a command runs.
+ * A stop request still executes speech that is already buffered or queued.
  */
 void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands::Parser& parser,
             Commands::Executor& executor, Config::Configuration& configuration) {
@@ -101,70 +64,11 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
     std::signal(SIGTERM, requestStop);
     Microphone microphone;
     UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
-    string lastReloadError;
-
-    const auto reloadConfiguration = [&] {
-        try {
-            if(configuration.reloadIfChanged()) {
-                spdlog::info("Reloaded phrase configuration");
-            }
-
-            lastReloadError.clear();
-        } catch(const std::exception& error) {
-            if(lastReloadError != error.what()) {
-                spdlog::warn("Keeping previous configuration: {}", error.what());
-            }
-
-            lastReloadError = error.what();
-        }
-    };
-    
-    /*
-     * @brief Transcribe one utterance, then parse it against live devices and execute the result.
-     */
-    const auto executeUtterance = [&](Audio::Samples utterance) {
-        const string heard = transcriber.transcribe(std::move(utterance));
-
-        if(heard.find_first_not_of(" \t\r\n") == string::npos) {
-            return;
-        }
-
-        const auto awake = Grammar::stripWakeWord(heard, settings.wakeWord);
-
-        if(!awake) {
-            spdlog::debug("Ignoring speech without the wake word: {}", heard);
-            return;
-        } else if(awake->empty()) {
-            spdlog::info("Wake word heard with no command");
-            return;
-        }
-
-        const string& text = *awake;
-
-        reloadConfiguration();
-
-        try {
-            const auto command = parser.parse(text, {executor.discoverDevices()});
-            printParsed(text, command);
-
-            if(command) {
-                printResult(executor.execute(*command), false);
-            }
-        } catch(const std::exception& error) {
-            spdlog::error("Cannot prepare command: {}", error.what());
-        }
-    };
-
-    spdlog::info("Listening. Press Ctrl+C to stop.");
-    auto lastReload = Clock::now();
+    CommandWorker worker(transcriber, parser, executor, configuration, settings.wakeWord);
     Audio::Samples block;
+    spdlog::info("Listening. Press Ctrl+C to stop.");
 
     while(running) {
-        if(Clock::now() - lastReload >= std::chrono::seconds(1)) {
-            reloadConfiguration();
-            lastReload = Clock::now();
-        }
-
         bool discontinuity = false;
 
         if(!microphone.read(block, discontinuity)) {
@@ -180,15 +84,13 @@ void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands
         }
 
         if(utterance) {
-            executeUtterance(std::move(*utterance));
-            // Audio queued while the command ran is stale, and a slow command overflows the queue.
-            microphone.discardPending();
+            worker.submit(std::move(*utterance));
         }
     }
 
-    // Speech still buffered when stopping is a complete command.
+    // Speech still buffered when stopping is a complete command; the worker finishes it on exit.
     if(auto utterance = utterances.finish()) {
-        executeUtterance(std::move(*utterance));
+        worker.submit(std::move(*utterance));
     }
 }
 } // namespace

@@ -1,10 +1,23 @@
 # Architecture
 
 ```
-Microphone → UtteranceBuffer → Speech::Transcriber → text
+capture thread:  Microphone → UtteranceBuffer → CommandWorker::submit
+worker thread:   Speech::Transcriber → text
 text + executor->discoverDevices() → Commands::Parser → Commands::Command
 Commands::Command → Commands::Executor → preview (read-only) or execute (one POST)
 ```
+
+## Threads
+
+- **Microphone capture thread** (`Microphone`): reads PortAudio into a five-second queue.
+- **Main thread** (`listen` in `main.cpp`): reads that queue, splits speech into utterances
+  and submits them. It never waits on inference or the network, so speech is still heard
+  while a command runs.
+- **Worker thread** (`CommandWorker`): transcribes, parses and executes each utterance in
+  order, and reloads the phrase file every second while idle. It is the only thread that
+  touches the transcriber, parser, executor and configuration, so none of them need locks.
+  At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes
+  every queued utterance before returning.
 
 Each stage knows the others only through the types in `src/commands/command.hpp` and
 `src/speech/transcriber.hpp`. `src/app/main.cpp` is the only place that names concrete
@@ -13,7 +26,7 @@ implementations.
 | Interface | Methods | Current implementation |
 | --- | --- | --- |
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
-| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `RegexParser` |
+| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `OllamaParser` (`RegexParser` also available) |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `preview(command)`, `execute(command)` | `HomeAssistant` |
 
 A `Commands::Command` is `{domain, service, entity, data}`. The services a command may
@@ -25,7 +38,7 @@ name, and their fields, are listed in `Commands::serviceCatalog()` (`src/command
   `RegexParser`. An LLM parser can describe `serviceCatalog()` as tools, list
   `context.devices` in its prompt, and convert the chosen tool call into a `Command`.
   `Grammar::DeviceNames` can resolve a spoken device name if the model returns one.
-  `src/ollama/ollama_parser.hpp` declares that parser for implementation.
+  `OllamaParser` (`src/ollama/`) does this with a JSON schema instead of tools.
 - **Executor:** derive from `Commands::Executor`. `discoverDevices()` supplies the devices
   parsers may target, and `execute()` must validate commands itself rather than trusting
   the parser.
@@ -52,6 +65,7 @@ so the parser and executor never disagree.
 - A command is one service call; multi-step requests need an API extension.
 - Checking and posting are separate requests, so another client may change state in
   between. Relative volume has the same read/modify/write limit.
-- Transcription, discovery, parsing and execution run sequentially; slow inference or
-  network calls can overflow the five-second capture queue.
-- Configuration and parsers are single-threaded; synchronize before sharing them.
+- Utterances are handled one at a time, so a slow command delays the next; more than three
+  waiting utterances drop the oldest.
+- Configuration, parsers and executors are single-threaded; only `CommandWorker` may use
+  them while it exists.
