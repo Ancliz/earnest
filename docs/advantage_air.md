@@ -1,78 +1,63 @@
-# AdvantageAir: verified configuration and command constraints
+# Zoned AC airflow policy (AdvantageAir)
 
-Read-only inspection on 2026-10-26 found Home Assistant 2026.10.4 with these controls:
+Ducted AC with zones needs enough open zones while the compressor runs. Controllers such as
+AdvantageAir protect this with installer-configured constant zones, which open automatically
+when too few zones are open. The optional `advantage_air` section of `config/home.yaml` adds a
+conservative application guard on top, so a voice command never relies on that last-second
+automatic reopen. Without the section, climate entities are controlled like any other device.
 
-| Entity | Role | Example phrase |
-| --- | --- | --- |
-| `climate.ac` | Main unit; MyTemp preset, off when inspected | “Turn the air conditioner on”; “Cool the AC”; “Set the fan speed on the AC to low” |
-| `climate.ac_master_bed` | Temperature-controlled zone | “Set master bedroom temperature to twenty two”; “Turn on master bedroom” |
-| `climate.ac_alasdair_bed` | Temperature-controlled zone | “Set Alasdair bed temperature to twenty one” |
-| `climate.ac_craft_ldy` | Temperature-controlled zone | “Turn on craft room”; “Set laundry temperature to twenty four” |
-| `climate.ac_tv_rump` | Temperature-controlled zone; installer constant | “Turn on TV and rump”; “Set TV room temperature to twenty two” |
-| `climate.ac_diningliving` | Temperature-controlled zone | “Turn on dining and living”; “Set living room temperature to twenty two” |
-| `switch.ac_myfan` | Automatic fan control | “Turn on automatic AC fan” |
-| `select.ac_myzone` | MyZone selection | Discovered, but voice changes are deliberately not configured |
+## Configuring a system
 
-No media-player, light, fan, or cover entity was returned by that state query.
-Their general phrase rules remain available if those entities are discovered later.
-Examples above were curated during development, not generated or inferred by the
-running program. Physical AC operation was not tested or changed.
+Describe each zoned system with read-only facts from your controller's diagnostics:
 
-## What was verified
+```yaml
+advantage_air:
+  systems:
+  - entity: climate.ac              # main unit
+    myzone_entity: select.ac_myzone # MyZone selector; voice may not change it
+    zones:                          # every zone's climate entity
+    - climate.ac_zone_1
+    - climate.ac_zone_2
+    constant_zones:                 # installer-configured constants, from diagnostics
+    - climate.ac_zone_1
+    minimum_open_zones: 1
+    verified_preset: MyTemp         # operating preset the policy was verified under
+```
 
-The controller's read-only HA diagnostics report five zones, `noOfConstants: 1`,
-`constant1: 4`, and no second/third constant. Zone 4 is TV & Rump. MyTemp is enabled;
-MyAuto is not running. The saved policy identifies those exact entities and the
-verified preset. No diagnostics dump, credentials, device identifiers, or installer
-access codes are stored in this document.
-
-The [manufacturer's user manual, section 6](https://www.advantageair.com.au/wp-content/uploads/2021/03/MyAir-and-MyAir-User-Manual-v4.1.pdf)
-explains that installer-configured constant zones may open automatically when too
-few zones are open. Their configuration depends on system sizing and house design;
-there is no universal minimum of two or three rooms. This installation's one
-constant is the basis for the application's conservative `minimum_open_zones: 1`
-check; it is not a general HVAC sizing rule or a measurement of sufficient airflow.
-
-The [HA integration documentation](https://www.home-assistant.io/integrations/advantage_air/)
-distinguishes main-system controls, temperature-controlled climate zones, manual
-vent covers, and MyZone/MyTemp/MyAuto. Your main entity currently has no single
-target-temperature capability in MyTemp; its zones do. Each reports 16–32°C in
-whole-degree steps. Zone `heat_cool` means enabled and is not a request for the main
-compressor to use automatic heating/cooling.
+There is no universal minimum number of open zones: it depends on system sizing and house
+design. Use your installation's constant-zone count, not a guess. The
+[AdvantageAir user manual, section 6](https://www.advantageair.com.au/wp-content/uploads/2021/03/MyAir-and-MyAir-User-Manual-v4.1.pdf)
+describes constant zones, and the
+[Home Assistant integration documentation](https://www.home-assistant.io/integrations/advantage_air/)
+describes the main-system controls, temperature-controlled zones, manual vent covers and
+MyZone/MyTemp/MyAuto.
 
 ## Enforcement
 
-All commands use ordinary Home Assistant services, which in turn go through the
-AdvantageAir controller. There are no raw controller writes, installer-setting
-changes, preset changes, or attempts to disable pressure-relief/constant logic.
+All commands use ordinary Home Assistant services, which go through the controller. There
+are no raw controller writes, installer-setting changes, preset changes, or attempts to
+disable pressure-relief or constant logic.
 
 Before posting, fresh state is checked:
 
-- A requested temperature, fan mode, or HVAC mode must match the target's current
-  capabilities, range, and step. “Cool master bedroom” is rejected because a zone
-  does not offer the main unit's cooling mode. Use the main unit for heating/cooling.
-- Main-unit start/mode changes and zone closures while running must leave the
-  configured minimum zones enabled and all listed constant zones enabled.
-- Voice cannot close TV & Rump while the main unit is running. This is stricter
-  than the controller's automatic constant-zone logic and intentionally avoids
-  relying on a last-second automatic reopen.
-- Closing zones while the main unit is off is allowed; the main unit will then
-  refuse to start until its required zone/constant conditions are satisfied.
-- A changed preset, missing/unavailable zone, or missing installation policy blocks
-  airflow-changing commands. The main unit can still be turned off when available.
-- MyZone selector changes are blocked to avoid changing which zone has constant
-  responsibility. Preset changes and installation/configuration services are not
-  in the supported voice service set.
+- A requested temperature, fan mode or HVAC mode must match the target's current
+  capabilities, range and step. A zone's `heat_cool` means enabled and is not a request for
+  the main unit to heat or cool automatically, so heating and cooling go to the main unit.
+- Starting the main unit or changing its mode, and closing a zone while it runs, must leave
+  `minimum_open_zones` and every constant zone open.
+- Voice cannot close a constant zone while the main unit runs.
+- Closing zones while the main unit is off is allowed; it then refuses to start until the
+  zone conditions are satisfied again.
+- A changed preset, or a missing or unavailable zone, blocks airflow-changing commands. The
+  main unit can still be turned off when available.
+- MyZone changes are blocked, so voice never changes which zone has constant responsibility.
 
-The [HA zone implementation](https://github.com/home-assistant/core/blob/dev/homeassistant/components/advantage_air/climate.py)
-forwards ordinary open/close commands to the controller; it does not independently
-calculate an installation-specific safe number of zones. We therefore do not treat
-acceptance by HA as proof that our own airflow conditions have been satisfied.
+The [Home Assistant zone implementation](https://github.com/home-assistant/core/blob/dev/homeassistant/components/advantage_air/climate.py)
+forwards open and close commands to the controller without calculating a safe number of
+zones, so acceptance by Home Assistant is not proof that these conditions hold.
 
-The enabled-zone checks add a conservative application guard; they do not replace
-the controller's protection or validate duct design/actual airflow. Another HA
-client can change state after a check, and HA itself polls the controller. Keep the
-controller's installer configuration intact. If the installer changes constants,
-zone layout, grouping, or operating preset, reverify the configuration and update
-the policy accordingly. The software does not invent a new minimum or force zones
-open to get around a rejected command.
+These checks add a guard; they do not replace the controller's protection or validate duct
+design or actual airflow. Another client can change state after a check, and Home Assistant
+polls the controller. If the installer changes constants, zone layout, grouping or operating
+preset, verify the configuration again and update the policy. The software does not invent a
+new minimum or force zones open to get around a rejected command.

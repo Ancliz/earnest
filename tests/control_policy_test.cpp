@@ -133,7 +133,7 @@ int main() {
     missing.erase(missing.begin() + 2);
     check(!validateCommand(start, controllableDevices(missing, services), services, policy).success,
           "a missing zone fails closed");
-    check(!validateCommand(start, devices, services, {}).success, "no installation policy blocks startup");
+    check(validateCommand(start, devices, services, {}).success, "climate outside a configured zoned system needs no airflow policy");
     check(!validateCommand({"select", "select_option", "select.ac_myzone", {{"option", "Inactive"}}}, devices, services, policy).success,
           "voice cannot change MyZone");
 

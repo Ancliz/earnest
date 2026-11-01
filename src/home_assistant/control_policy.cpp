@@ -242,8 +242,9 @@ string checkAirflow(const Command& command, const Devices& devices, const Airflo
         return candidate.entity == command.entity || contains(candidate.zones, command.entity);
     });
 
+    // Entities outside a configured zoned system have no shared airflow to protect.
     if(system == policy.end()) {
-        return "No verified airflow policy is configured for this climate entity";
+        return "";
     }
 
     const Device* mainUnit = findDevice(devices, system->entity);
@@ -360,8 +361,7 @@ string checkCommand(const Command& command, const Devices& devices, const Servic
                "selection";
     }
 
-    // Every climate and damper command needs a verified installation policy, so a zone's
-    // heat_cool state is never mistaken for the compressor's mode.
+    // Climate and damper commands within a configured zoned system must keep its airflow safe.
     if(command.domain == "climate" || isDamper) {
         return checkAirflow(command, devices, policy);
     }
