@@ -57,6 +57,17 @@ int main() {
     checkThrows([&] { configuration.reloadIfChanged(); }, "template slot without a capture rejected");
     write(pauseRule + "    body: {}\n");
     check(configuration.reloadIfChanged() && recorded == configuration.data(), "valid edit applied");
+
+    // An installation file overlays the phrase file: objects merge, lists append, scalars replace.
+    const string home = (directory / "home.yaml").string();
+    Config::Configuration overlaid(file, [&](const json& candidate) { recorded = candidate; }, home);
+    check(!recorded.contains("aliases"), "a missing home file is optional");
+    std::ofstream(home) << "aliases:\n  media_player.kitchen: [cooking]\nrules:\n  - id: extra\n";
+    check(overlaid.reloadIfChanged() && recorded["aliases"]["media_player.kitchen"][0] == "cooking" && recorded["rules"].size() == 2,
+          "a home file change reloads and merges");
+    check(Config::mergeConfiguration({{"a", {{"b", 1}, {"c", 2}}}}, {{"a", {{"c", 3}}}}) == json{{"a", {{"b", 1}, {"c", 3}}}},
+          "nested objects merge");
+    std::filesystem::remove(home);
     std::filesystem::remove(file);
     checkThrows([&] { configuration.reloadIfChanged(); }, "deleted file reported");
     check(parser.parse("hold kitchen", context) == pause, "deleted file keeps the active rules");

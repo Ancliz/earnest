@@ -4,6 +4,7 @@
  */
 
 #include "check.hpp"
+#include "fixtures.hpp"
 #include "config/configuration.hpp"
 #include "parser/device_names.hpp"
 #include "parser/regex_parser.hpp"
@@ -66,7 +67,7 @@ string target(const std::optional<Command>& command) {
  * @brief Run grammar, spoken-number, name-resolution and ambiguity regressions.
  */
 int main() {
-    RegexParser parser(Config::readYamlFile(Config::defaultPhraseFile));
+    RegexParser parser(readTestConfiguration());
     const string kitchen = "media_player.kitchen";
     const string lounge = "media_player.lounge";
     const string fallback = "media_player.default";

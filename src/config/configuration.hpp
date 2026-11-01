@@ -14,6 +14,11 @@
 #define SMARTHOME_PHRASE_FILE "config/phrases.yaml"
 #endif
 
+#ifndef SMARTHOME_HOME_FILE
+/// Installation file path; the build supplies the source tree's config/home.yaml.
+#define SMARTHOME_HOME_FILE "config/home.yaml"
+#endif
+
 namespace Config {
     
 /// JSON value type produced by YAML decoding.
@@ -23,6 +28,11 @@ using json = nlohmann::json;
  * @brief Phrase file used when --phrases is not given.
  */
 constexpr const char* defaultPhraseFile = SMARTHOME_PHRASE_FILE;
+
+/**
+ * @brief Installation file (aliases, voice scope, AC policy) used when --home is not given.
+ */
+constexpr const char* defaultHomeFile = SMARTHOME_HOME_FILE;
 
 /**
  * @brief Decode one YAML document into JSON.
@@ -42,12 +52,21 @@ json readYaml(const std::string& text);
 json readYamlFile(const std::string& path);
 
 /**
- * @brief A YAML file pushed to its consumers on load and whenever its text changes.
+ * @brief Overlay an installation file on the phrase file: objects merge, lists append, and other
+ *        values replace.
+ */
+json mergeConfiguration(json base, const json& overlay);
+
+/**
+ * @brief A phrase file, overlaid by an optional installation file, pushed to its consumers on load
+ *        and whenever either file's text changes.
  */
 class Configuration {
-    /// File read on construction and on each reload.
+    /// Phrase file read on construction and on each reload.
     std::string path;
-    /// Text of the last load attempt, whether applied or rejected.
+    /// Installation file merged over it; empty or missing for none.
+    std::string homePath;
+    /// Texts of the last load attempt, whether applied or rejected.
     std::string lastText;
     /// Configuration currently applied to every consumer.
     json active;
@@ -60,14 +79,20 @@ class Configuration {
      */
     void load(const std::string& text);
 
+    /**
+     * @brief Both files' texts, joined so a change to either is seen; a missing home file is empty.
+     */
+    std::string readTexts() const;
+
 public:
     /**
      * @brief Load a file and pass it to the consumers.
-     * @param[in] path File to read now and on each reload.
+     * @param[in] path Phrase file to read now and on each reload.
      * @param[in] apply Configures every consumer and throws to reject a configuration.
-     * @throws std::exception If the file cannot be read, decoded, or applied.
+     * @param[in] homePath Installation file merged over the phrase file, if it exists.
+     * @throws std::exception If a file cannot be read, decoded, or applied.
      */
-    Configuration(std::string path, std::function<void(const json&)> apply);
+    Configuration(std::string path, std::function<void(const json&)> apply, std::string homePath = "");
 
     /**
      * @brief Apply the file again if its text changed since the last attempt.

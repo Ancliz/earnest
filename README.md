@@ -54,15 +54,16 @@ just leaving it out. In a GPU build, `--cpu` forces CPU transcription at runtime
 ## Commands and discovery
 
 See [the phrase guide](docs/phrases.md) for the YAML format and C++ API, and
-[the AdvantageAir notes](docs/advantage_air.md) for the verified installation and
-control constraints. Edit `config/phrases.yaml` to add phrases and aliases; valid changes
+[the AdvantageAir notes](docs/advantage_air.md) for the optional zoned-AC safety policy.
+Copy `config/home.example.yaml` to `config/home.yaml` for your own aliases, voice scope and
+AC policy; it is not tracked by git. Edit `config/phrases.yaml` to add phrases; valid changes
 reload while the app runs, without recompiling. An invalid replacement keeps the
 last valid configuration.
 
 ```sh
 ./build/voice-test --list-devices
 ./build/voice-test --check-phrases
-./build/voice-test --parse 'set master bedroom temperature to twenty two'
+./build/voice-test --parse 'set the bedroom temperature to twenty two'
 ```
 
 The discovery and dry-run modes send no control commands and require no Whisper
@@ -108,7 +109,8 @@ References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 - `src/parser/`: the regex parser, phrase DSL, spoken numbers, and device-name matching.
 - `src/home_assistant/`: the Home Assistant executor, discovery, and control policy.
 - `src/ollama/`: Ollama client and the pending LLM parser.
-- `config/phrases.yaml`: editable phrases, aliases, and installation policy.
+- `config/phrases.yaml`: shared, editable phrase rules.
+- `config/home.example.yaml`: template for the untracked `config/home.yaml` (aliases, voice scope, AC policy).
 - `tests/` and `docs/`: automated checks and supporting documentation.
 
 ## API documentation

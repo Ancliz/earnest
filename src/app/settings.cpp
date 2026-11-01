@@ -93,6 +93,8 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.parseText = value();
         } else if(arg == "--phrases") {
             settings.phraseFile = value();
+        } else if(arg == "--home") {
+            settings.homeFile = value();
         } else if(arg == "--wake-word") {
             settings.wakeWord = value();
         } else if(arg == "--log-level") {
@@ -177,7 +179,7 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
 }
 
 void printUsage(const std::string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--phrases FILE] "
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

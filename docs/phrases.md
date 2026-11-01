@@ -1,6 +1,10 @@
 # Phrase configuration and API
 
-The application reads `config/phrases.yaml`. Save changes while it runs: it checks once a
+The application reads two files. `config/phrases.yaml` holds the phrase rules every
+installation shares. `config/home.yaml` (not tracked by git; copy `config/home.example.yaml`)
+holds your own aliases, voice scope and optional AC policy, and is merged over the phrase
+file: objects merge, lists append, other values replace. It is optional, and `--home`
+chooses another path. Save changes to either while it runs: it checks once a
 second and again before parsing a completed transcript. No C++ rebuild is needed.
 A missing, malformed, or invalid replacement keeps the previous complete ruleset
 and airflow policy. The first load must succeed. This is a local, trusted config
@@ -58,12 +62,12 @@ not for each audio block. The parser does not generate phrases at runtime.
 ## Aliases
 
 Discovery creates domain-specific aliases from full entity IDs, readable entity
-names, and `friendly_name`. Add preferred spoken names using entity IDs:
+names, and `friendly_name`. Add preferred spoken names using entity IDs in `home.yaml`:
 
 ```yaml
 aliases:
-  climate.ac_master_bed:
-    - master bedroom
+  climate.bedroom:
+    - main bedroom
     - our bedroom
 ```
 
@@ -116,8 +120,8 @@ The executor validates commands independently of the parser that supplied them.
 ```sh
 ./build/voice-test --check-phrases
 ./build/voice-test --list-devices
-./build/voice-test --parse 'set master bedroom temperature to twenty two'
-./build/voice-test --phrases ./my-phrases.yaml models/ggml-base.en.bin
+./build/voice-test --parse 'set the bedroom temperature to twenty two'
+./build/voice-test --phrases ./my-phrases.yaml --home ./my-home.yaml models/ggml-base.en.bin
 ```
 
 `--check-phrases` needs no token/model/network. `--list-devices` and `--parse` use
@@ -151,4 +155,5 @@ port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
 | `src/parser/device_names.*` | Domain-scoped exact/fuzzy name resolution |
 | `src/parser/speech_text.*` | Text normalization and spoken numbers |
 | `src/ollama/*` | Ollama client and the pending LLM parser declaration |
-| `config/phrases.yaml` | User-editable phrases, aliases, and installation policy |
+| `config/phrases.yaml` | Shared, editable phrase rules |
+| `config/home.example.yaml` | Template for the untracked `config/home.yaml`: aliases, voice scope, AC policy |

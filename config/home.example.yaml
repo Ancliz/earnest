@@ -1,0 +1,31 @@
+# Copy to home.yaml (not tracked by git) and describe your own installation. Everything here is
+# optional; it is merged over phrases.yaml, and valid changes reload while the app is running.
+
+# Extra spoken names for entities, beyond their Home Assistant friendly names.
+aliases:
+  climate.living_room:
+  - lounge
+  - front room
+  media_player.kitchen_speaker:
+  - kitchen
+
+# Services and devices are discovered from Home Assistant. Security, system, automation and
+# helper domains are excluded by default; allow or exclude domains or domain.service names here.
+voice_control:
+  allow: []
+  exclude: []
+
+# Optional airflow safety policy for zoned ducted AC (verified on AdvantageAir; see
+# docs/advantage_air.md). Climate entities in a system may only start or close zones while the
+# required zones stay open. Remove this section if you have no zoned system.
+# advantage_air:
+#   systems:
+#   - entity: climate.ac
+#     myzone_entity: select.ac_myzone
+#     zones:
+#     - climate.ac_zone_1
+#     - climate.ac_zone_2
+#     constant_zones:
+#     - climate.ac_zone_1
+#     minimum_open_zones: 1
+#     verified_preset: MyTemp

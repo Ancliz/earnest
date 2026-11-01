@@ -1,0 +1,50 @@
+# Installation used by the tests: aliases and an AdvantageAir policy for the fixture states.
+aliases:
+  climate.ac:
+  - air conditioner
+  - air conditioning
+  - air con
+  - aircon
+  - heating
+  - cooling
+  climate.ac_master_bed:
+  - master bedroom
+  - master bed
+  climate.ac_guest_bed:
+  - guest bedroom
+  - guest bed
+  climate.ac_craft_ldy:
+  - craft room
+  - laundry
+  - craft and laundry
+  climate.ac_tv_rump:
+  - tv and rumpus
+  - tv and rump
+  - rumpus room
+  - tv room
+  climate.ac_diningliving:
+  - dining and living
+  - dining living
+  - living room
+  switch.ac_myfan:
+  - my fan
+  - automatic ac fan
+# Services and devices are discovered from Home Assistant. Security, system, automation and
+# helper domains are excluded by default; allow or exclude domains or domain.service names here.
+voice_control:
+  allow: []
+  exclude: []
+advantage_air:
+  systems:
+  - entity: climate.ac
+    myzone_entity: select.ac_myzone
+    zones:
+    - climate.ac_master_bed
+    - climate.ac_guest_bed
+    - climate.ac_craft_ldy
+    - climate.ac_tv_rump
+    - climate.ac_diningliving
+    constant_zones:
+    - climate.ac_tv_rump
+    minimum_open_zones: 1
+    verified_preset: MyTemp

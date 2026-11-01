@@ -66,7 +66,8 @@ integration needs no configuration here:
 
 ## Configuration
 
-`Config::Configuration` reads `config/phrases.yaml` and passes it to every consumer
+`Config::Configuration` reads `config/phrases.yaml`, merges the installation's
+`config/home.yaml` over it when present, and passes the result to every consumer
 through one callback: the executor reads `advantage_air` and `voice_control`, and the parser reads `rules`
 and `aliases`. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.

@@ -32,7 +32,7 @@ json state(const string& entity, const string& status, const json& attributes = 
  * @brief Verify configured parsing against multi-domain devices and every independent control guard.
  */
 int main() {
-    const auto configuration = Config::readYamlFile(Config::defaultPhraseFile);
+    const auto configuration = readTestConfiguration();
     const auto policy = readAirflowPolicy(configuration);
     const auto services = readServiceCatalogue(readFixture("services.json"), readVoiceScope(configuration));
     RegexParser parser(configuration);
@@ -50,8 +50,8 @@ int main() {
                             {"max_temp", 32},
                             {"target_temp_step", 1},
                             {"hvac_modes", {"off", "heat_cool"}}}),
-                     state("climate.ac_alasdair_bed", "heat_cool",
-                           {{"friendly_name", "AC Alasdair Bed"}, {"supported_features", 385}}),
+                     state("climate.ac_guest_bed", "heat_cool",
+                           {{"friendly_name", "AC Guest Bed"}, {"supported_features", 385}}),
                      state("climate.ac_craft_ldy", "off",
                            {{"friendly_name", "AC Craft Ldy"}, {"supported_features", 385}}),
                      state("climate.ac_tv_rump", "heat_cool",

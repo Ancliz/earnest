@@ -26,7 +26,7 @@ using std::string;
  * Every control POST targets a loopback mock server, never a real installation.
  */
 int main() {
-    const auto configuration = Config::readYamlFile(Config::defaultPhraseFile);
+    const auto configuration = readTestConfiguration();
     RegexParser parser(configuration);
     const json states = {{{"entity_id", "media_player.kitchen"},
                           {"state", "playing"},

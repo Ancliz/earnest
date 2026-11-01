@@ -51,6 +51,9 @@ struct Settings {
 
     /// Phrase, alias and policy file.
     std::string phraseFile = Config::defaultPhraseFile;
+
+    /// Installation file of aliases, voice scope and AC policy, merged over the phrase file.
+    std::string homeFile = Config::defaultHomeFile;
     
     /// Text given to --parse.
     std::string parseText;

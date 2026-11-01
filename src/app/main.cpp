@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
         Config::Configuration configuration(settings.phraseFile, [&](const json& candidate) {
             executor->configure(candidate);
             parser->configure(candidate);
-        });
+        }, settings.homeFile);
 
         if(settings.mode == Mode::CheckPhrases) {
             spdlog::info("Phrase configuration is valid");

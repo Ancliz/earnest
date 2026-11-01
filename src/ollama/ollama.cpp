@@ -90,7 +90,7 @@ vector<string> words(string name) {
  * @brief Whether a heard word could be a misheard or shortened name word.
  *
  * Short words must match exactly. Longer ones may differ by about a third, capped at three
- * edits, so "ramp" matches "rump" and "q919" matches "q990b" but "queue" misses "q800b"; a
+ * edits, so "ramp" matches "lamp" and model number "q919" matches "q990b" but "queue" misses "q800b"; a
  * three-letter start also matches, so "bedroom" matches "bed".
  */
 bool soundsLike(const string& heard, const string& name) {

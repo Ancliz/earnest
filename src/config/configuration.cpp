@@ -6,6 +6,7 @@
 #include "configuration.hpp"
 
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <utility>
@@ -216,14 +217,40 @@ json readYamlFile(const std::string& path) {
     return readYaml(readFile(path));
 }
 
-Configuration::Configuration(string path, std::function<void(const json&)> apply)
-    : path(std::move(path)), apply(std::move(apply)) {
-    lastText = readFile(this->path);
+json mergeConfiguration(json base, const json& overlay) {
+    if(base.is_object() && overlay.is_object()) {
+        for(const auto& [key, value] : overlay.items()) {
+            base[key] = base.contains(key) ? mergeConfiguration(base[key], value) : value;
+        }
+    } else if(base.is_array() && overlay.is_array()) {
+        base.insert(base.end(), overlay.begin(), overlay.end());
+    } else {
+        base = overlay;
+    }
+
+    return base;
+}
+
+Configuration::Configuration(string path, std::function<void(const json&)> apply, string homePath)
+    : path(std::move(path)), homePath(std::move(homePath)), apply(std::move(apply)) {
+    lastText = readTexts();
     load(lastText);
 }
 
+string Configuration::readTexts() const {
+    const bool home = !homePath.empty() && std::filesystem::exists(homePath) && std::filesystem::file_size(homePath) > 0;
+    return readFile(path) + '\0' + (home ? readFile(homePath) : "");
+}
+
 void Configuration::load(const string& text) {
-    json candidate = readYaml(text);
+    const auto split = text.find('\0');
+    const string home = text.substr(split + 1);
+    json candidate = readYaml(text.substr(0, split));
+
+    if(!home.empty()) {
+        candidate = mergeConfiguration(std::move(candidate), readYaml(home));
+    }
+
 
     try {
         apply(candidate);
@@ -240,7 +267,7 @@ void Configuration::load(const string& text) {
 }
 
 bool Configuration::reloadIfChanged() {
-    string text = readFile(path);
+    string text = readTexts();
 
     if(text == lastText) {
         return false;

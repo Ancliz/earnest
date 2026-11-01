@@ -19,7 +19,8 @@ target_include_directories(commands INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(commands INTERFACE nlohmann_json::nlohmann_json)
 
 add_library(configuration src/config/configuration.cpp)
-target_compile_definitions(configuration PUBLIC SMARTHOME_PHRASE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/config/phrases.yaml")
+target_compile_definitions(configuration PUBLIC SMARTHOME_PHRASE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/config/phrases.yaml"
+                           SMARTHOME_HOME_FILE="${CMAKE_CURRENT_SOURCE_DIR}/config/home.yaml")
 target_include_directories(configuration PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(configuration PUBLIC nlohmann_json::nlohmann_json PRIVATE PkgConfig::YAML)
 

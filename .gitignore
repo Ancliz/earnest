@@ -4,6 +4,9 @@
 
 # Local credentials
 .env
+
+# Installation config
+/config/home.yaml
 .env.*
 !.env.example
 
