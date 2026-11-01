@@ -253,7 +253,8 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
                      "media_pause. data holds only the service's allowed fields; never put the device, "
                      "entity, domain or service in data, and use {} when the service needs no fields. "
                      "volume_level is the spoken volume as a percentage: copy the number said, so "
-                     "\"volume to 3\" is 3 and \"twenty percent\" is 20. " +
+                     "\"volume to 3\" is 3 and \"twenty percent\" is 20. \"Up\" or \"down\" without \"to\" "
+                     "means volume_up or volume_down, with the number said as amount, or {} when none is said. " +
                          string(examples) +
                          "Services with their allowed and required data fields: " + services.dump() +
                          ". Devices: " + devices.dump() + ". If the request is not a device command, return empty strings."}},
@@ -291,9 +292,25 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             }
         }
 
-        // The model copies the spoken percentage; converting it here keeps arithmetic out of the model.
-        if(command.data.contains("volume_level") && command.data["volume_level"].is_number()) {
-            const auto percent = command.data["volume_level"].get<double>();
+        // Small models pick volume_set for "turn it up 3"; a direction without "to" is a relative change.
+        const std::regex direction("\\b(up|down|louder|quieter|softer|raise|lower)\\b");
+        const auto normalized = Grammar::normalizeText(request);
+        const bool relative = std::regex_search(normalized, direction) && !std::regex_search(normalized, std::regex("\\bto\\b"));
+
+        if(command.domain == "media_player" && relative && command.service.rfind("volume_", 0) == 0) {
+            const bool down = std::regex_search(normalized, std::regex("\\b(down|quieter|softer|lower)\\b"));
+            const json level = command.data.value("volume_level", command.data.value("amount", json()));
+            command.service = down ? "volume_down" : "volume_up";
+            command.data = level.is_number() ? json{{"amount", level}} : json::object();
+        }
+
+        // The model copies spoken percentages; converting them here keeps arithmetic out of the model.
+        for(const char* field : {"volume_level", "amount"}) {
+            if(!command.data.contains(field) || !command.data[field].is_number()) {
+                continue;
+            }
+
+            const auto percent = command.data[field].get<double>();
             const std::regex digits("\\b\\d+(\\.\\d+)?\\b"); // Standalone, so "Q990" is not a number
             bool spoken = true;
 
@@ -308,11 +325,11 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             }
 
             if(!spoken) {
-                spdlog::warn("Rejecting volume {}: not a number in the request", percent);
+                spdlog::warn("Rejecting {} {}: not a number in the request", field, percent);
                 return std::nullopt;
             }
 
-            command.data["volume_level"] = percent / 100;
+            command.data[field] = percent / 100;
         }
 
         return command;
