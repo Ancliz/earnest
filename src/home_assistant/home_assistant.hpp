@@ -14,8 +14,8 @@ using namespace Commands;
 /**
  * @brief Extract controllable entities from a Home Assistant /api/states array.
  *
- * Keeps media_player, climate, light, switch, fan, cover and select entities, skips malformed
- * records, and falls back to the object ID when an entity has no friendly name.
+ * Keeps entities whose domain Commands::serviceCatalog() lists, skips malformed records, and
+ * falls back to the object ID when an entity has no friendly name.
  *
  * @throws std::runtime_error If the states are not an array.
  */

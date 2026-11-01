@@ -4,9 +4,9 @@
  */
 
 #include "home_assistant.hpp"
+#include "commands/services.hpp"
 
 #include <algorithm>
-#include <set>
 #include <stdexcept>
 
 using Commands::Command;
@@ -36,8 +36,6 @@ Devices controllableDevices(const json& states) {
         throw runtime_error("Home Assistant states must be a JSON array");
     }
 
-    static const std::set<string> domains = {"media_player", "climate", "light", "switch",
-                                             "fan",          "cover",   "select"};
     Devices devices;
 
     for(const auto& state : states) {
@@ -50,7 +48,8 @@ Devices controllableDevices(const json& states) {
         const string entity = entityId.get<string>();
         const auto dot = entity.find('.');
 
-        if(dot == string::npos || dot + 1 == entity.size() || !domains.count(entity.substr(0, dot))) {
+        // Only domains the service catalogue can command are controllable; it is the one list to edit.
+        if(dot == string::npos || dot + 1 == entity.size() || !Commands::serviceCatalog().count(entity.substr(0, dot))) {
             continue;
         }
 
