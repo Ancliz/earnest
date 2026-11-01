@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Command-line options and Home Assistant connection settings.
+ * @brief Command-line options and service connection settings.
  */
 
 #pragma once
@@ -73,26 +73,32 @@ struct Settings {
 Settings parseArguments(int argc, char* argv[]);
 
 /**
- * @brief Home Assistant connection settings.
+ * @brief Where the Home Assistant and Ollama servers are, which differ for every installation.
  */
-struct HomeAssistantSettings {
+struct ConnectionSettings {
 
-    /// Origin including scheme and port.
-    std::string url = "http://wyvern:8123";
+    /// Home Assistant origin including scheme and port (HOME_ASSISTANT_URL).
+    std::string url = "http://homeassistant.local:8123";
 
-    /// Long-lived access token; empty when not configured.
+    /// Long-lived access token (HOME_ASSISTANT_TOKEN); empty when not configured.
     std::string token;
+
+    /// Ollama origin including scheme and port (OLLAMA_URL).
+    std::string ollamaUrl = "http://localhost:11434";
+
+    /// Installed Ollama model name and tag (OLLAMA_MODEL).
+    std::string ollamaModel = "qwen3.5:4b";
 };
 
 /**
- * @brief Read HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN from a dotenv file and the environment.
+ * @brief Read the connection settings from a dotenv file and the environment.
  *
  * Environment variables override file values, and a missing file is ignored. Lines may use an
  * "export " prefix and quoted values. The environment is never modified.
  *
  * @throws std::runtime_error For a non-comment line without "=".
  */
-HomeAssistantSettings readHomeAssistantSettings(const std::string& path = ".env");
+ConnectionSettings readConnectionSettings(const std::string& path = ".env");
 
 /**
  * @brief Log the supported command-line syntax.

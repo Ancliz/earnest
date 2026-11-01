@@ -110,9 +110,9 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        const auto connection = readHomeAssistantSettings();
+        const auto connection = readConnectionSettings();
         // Swap point: each stage only sees the others through the Commands and Speech interfaces.
-        std::unique_ptr<Commands::Parser> parser = std::make_unique<OllamaParser>();
+        std::unique_ptr<Commands::Parser> parser = std::make_unique<OllamaParser>(connection.ollamaUrl, connection.ollamaModel);
         std::unique_ptr<Commands::Executor> executor =
             std::make_unique<HomeAssistant>(connection.url, connection.token);
         Config::Configuration configuration(settings.phraseFile, [&](const json& candidate) {

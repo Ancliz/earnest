@@ -32,7 +32,7 @@ public:
      * @param[in] url Server origin, including scheme and port.
      * @param[in] model Installed model name and tag.
      */
-    explicit OllamaClient(const string& url = "http://192.168.4.238:11434", const string& model = "qwen3.5:4b");
+    OllamaClient(const string& url, const string& model);
 
     /**
      * @brief Submit messages and optional tools to the chat endpoint.

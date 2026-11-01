@@ -66,8 +66,9 @@ last valid configuration.
 ```
 
 The discovery and dry-run modes send no control commands and require no Whisper
-model. Dry runs query both states and service availability. Set `HOME_ASSISTANT_TOKEN` in the environment or ignored `.env` file. Optionally
-set `HOME_ASSISTANT_URL` to a full URL including port.
+model. Dry runs query both states and service availability. Copy `.env.example` to `.env` (ignored by git) and set `HOME_ASSISTANT_TOKEN`; the
+Home Assistant and Ollama URLs and the Ollama model are set there too. Environment
+variables override the file.
 
 The pipeline has three swappable stages: a `Speech::Transcriber` turns audio into
 text, a `Commands::Parser` turns text into one `Commands::Command`, and a

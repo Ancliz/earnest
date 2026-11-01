@@ -37,16 +37,19 @@ int main() {
     const auto file =
         std::filesystem::temp_directory_path() / ("smarthome-settings-" + std::to_string(getpid()) + ".env");
     std::ofstream(file) << " export HOME_ASSISTANT_URL = 'http://example.invalid:8123'\n"
-                           "# comment\nHOME_ASSISTANT_TOKEN=\"test-file-token\"\n";
+                           "# comment\nHOME_ASSISTANT_TOKEN=\"test-file-token\"\nOLLAMA_MODEL=test-model\n";
     unsetenv("HOME_ASSISTANT_URL");
+    unsetenv("OLLAMA_URL");
+    unsetenv("OLLAMA_MODEL");
     unsetenv("HOME_ASSISTANT_TOKEN");
-    auto connection = readHomeAssistantSettings(file.string());
+    auto connection = readConnectionSettings(file.string());
     check(connection.url == "http://example.invalid:8123" && connection.token == "test-file-token",
           "file values are read and unquoted");
+    check(connection.ollamaModel == "test-model" && connection.ollamaUrl == "http://localhost:11434", "Ollama settings are read, with defaults");
     check(!std::getenv("HOME_ASSISTANT_URL") && !std::getenv("HOME_ASSISTANT_TOKEN"),
           "reading settings does not change the environment");
     setenv("HOME_ASSISTANT_TOKEN", "environment-token", 1);
-    connection = readHomeAssistantSettings(file.string());
+    connection = readConnectionSettings(file.string());
     check(connection.token == "environment-token" && connection.url == "http://example.invalid:8123",
           "the environment overrides file values");
     std::filesystem::remove(file);

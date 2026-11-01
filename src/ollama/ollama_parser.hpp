@@ -24,6 +24,11 @@ class OllamaParser final : public Commands::Parser {
 
 public:
     /**
+     * @brief Configure the Ollama server and model without making a request.
+     */
+    OllamaParser(const string& url, const string& model) : client(url, model) {}
+
+    /**
      * @brief Apply the phrase file's settings, such as aliases.
      */
     void configure(const json& configuration) override;

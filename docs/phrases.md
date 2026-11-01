@@ -77,7 +77,7 @@ are not fetched by this application.
 
 ```cpp
 std::unique_ptr<Commands::Parser> parser = std::make_unique<RegexParser>();
-std::unique_ptr<Commands::Executor> executor = std::make_unique<HomeAssistant>("http://wyvern:8123", token);
+std::unique_ptr<Commands::Executor> executor = std::make_unique<HomeAssistant>("http://homeassistant.local:8123", token);
 Config::Configuration configuration(Config::defaultPhraseFile, [&](const Commands::json& candidate) {
     executor->configure(candidate);
     parser->configure(candidate);
@@ -127,7 +127,8 @@ and prints the resolved request or rejection. Environment variables take
 precedence over values in the ignored `.env` file in the current directory.
 Reading that file returns connection settings and does not call `setenv`.
 Use `HOME_ASSISTANT_TOKEN` and optionally `HOME_ASSISTANT_URL` (full URL including
-port, default `http://wyvern:8123`).
+port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
+`http://localhost:11434`) and `OLLAMA_MODEL` (default `qwen3.5:4b`). See `.env.example`.
 
 ## Source layout
 

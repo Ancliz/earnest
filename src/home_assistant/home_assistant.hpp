@@ -108,7 +108,7 @@ class HomeAssistant final : public Executor {
 public:
     /**
      * @brief Configure the REST client without contacting the server.
-     * @param[in] url Origin including scheme and optional port, such as "http://wyvern:8123".
+     * @param[in] url Origin including scheme and optional port, such as "http://homeassistant.local:8123".
      * @param[in] token Long-lived access token.
      */
     HomeAssistant(const std::string& url, const std::string& token);

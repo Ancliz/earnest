@@ -11,6 +11,7 @@
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 using std::runtime_error;
 using std::size_t;
@@ -127,9 +128,11 @@ Settings parseArguments(int argc, char* argv[]) {
     return settings;
 }
 
-HomeAssistantSettings readHomeAssistantSettings(const std::string& path) {
+ConnectionSettings readConnectionSettings(const std::string& path) {
     std::ifstream input(path);
-    HomeAssistantSettings settings;
+    ConnectionSettings settings;
+    const std::pair<const char*, string*> keys[] = {{"HOME_ASSISTANT_URL", &settings.url}, {"HOME_ASSISTANT_TOKEN", &settings.token},
+                                                    {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}};
     string line;
 
     while(std::getline(input, line)) {
@@ -157,19 +160,17 @@ HomeAssistantSettings readHomeAssistantSettings(const std::string& path) {
             value = value.substr(1, value.size() - 2);
         }
 
-        if(key == "HOME_ASSISTANT_URL") {
-            settings.url = value;
-        } else if(key == "HOME_ASSISTANT_TOKEN") {
-            settings.token = value;
+        for(const auto& [name, setting] : keys) {
+            if(key == name) {
+                *setting = value;
+            }
         }
     }
 
-    if(const char* value = std::getenv("HOME_ASSISTANT_URL")) {
-        settings.url = value;
-    }
-
-    if(const char* value = std::getenv("HOME_ASSISTANT_TOKEN")) {
-        settings.token = value;
+    for(const auto& [name, setting] : keys) {
+        if(const char* value = std::getenv(name)) {
+            *setting = value;
+        }
     }
 
     return settings;
