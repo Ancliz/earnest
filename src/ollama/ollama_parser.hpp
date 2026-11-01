@@ -14,7 +14,7 @@ using Commands::Context;
 /**
  * @brief Asks an Ollama model to choose the one command a text requests.
  *
- * Commands::serviceCatalog() lists the services a command may name, and Context::devices the
+ * Context::services lists the services a command may name, and Context::devices the
  * entities it may target.
  */
 class OllamaParser final : public Commands::Parser {

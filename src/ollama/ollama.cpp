@@ -5,7 +5,6 @@
 
 #include "ollama.hpp"
 #include "ollama_parser.hpp"
-#include "commands/services.hpp"
 #include "parser/device_names.hpp"
 #include "parser/speech_text.hpp"
 
@@ -224,7 +223,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
     // Offer only devices whose domain the catalogue can command.
     for(const auto& device : context.devices) {
-        if(Commands::serviceCatalog().count(device.domain)) {
+        if(context.services.count(device.domain)) {
             devices.push_back(
                 {{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
             domains.insert(device.domain);
@@ -237,7 +236,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
     set<string> serviceNames;
 
     for(const auto& domain : domains) {
-        for(const auto& [service, fields] : Commands::serviceCatalog().at(domain)) {
+        for(const auto& [service, fields] : context.services.at(domain)) {
             services[domain][service] = {{"allowed", fields.allowed}, {"required", fields.required}};
             serviceNames.insert(service);
         }
@@ -265,7 +264,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             client.chat(messages, json::array(), commandFormat(domains, serviceNames, entities));
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
-        const auto* fields = Commands::findService(command.domain, command.service);
+        const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
         if(command.domain.empty() || !fields) {
             return std::nullopt;

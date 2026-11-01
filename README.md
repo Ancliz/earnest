@@ -100,7 +100,7 @@ References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 ## Project layout
 
 - `src/app/`: startup, CLI/connection settings, implementation selection, and reporting.
-- `src/commands/`: the command vocabulary, service catalog, and parser/executor interfaces.
+- `src/commands/`: the command vocabulary, service catalogue types, and parser/executor interfaces.
 - `src/config/`: bounded YAML decoding, file access, and transactional reload.
 - `src/speech/`: the transcriber interface and Whisper implementation.
 - `src/audio/`: microphone capture and utterance buffering.

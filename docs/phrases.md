@@ -44,8 +44,9 @@ An explicit `relative: true` on a media-player volume-up/down rule turns a spoke
 amount into a `volume_up`/`volume_down` command with a normalized `amount` field.
 The executor reads the current volume immediately before execution, clamps the
 result to 0–1, and posts `volume_set`. A missing current volume rejects the command.
-An omitted optional amount uses the direct volume-up/down service. Services outside
-`Commands::serviceCatalog()` are rejected.
+An omitted optional amount uses the direct volume-up/down service. A rule may name any
+service; whether Home Assistant offers it, and voice may use it, is checked against the
+discovered catalogue when the command executes.
 
 Rule order determines the first valid interpretation within a domain. Matches
 that resolve to different commands across domains are rejected, so a speaker and
@@ -82,7 +83,7 @@ Config::Configuration configuration(Config::defaultPhraseFile, [&](const Command
     parser->configure(candidate);
 });
 
-const auto command = parser->parse("set master bedroom temperature to twenty two", {executor->discoverDevices()});
+const auto command = parser->parse("set master bedroom temperature to twenty two", {executor->discoverDevices(), executor->discoverServices()});
 // {"domain":"climate","service":"set_temperature","entity":"climate.ac_master_bed","data":{"temperature":22}}
 
 // Explicitly choose either a read-only preview or execution:
@@ -135,7 +136,7 @@ port, default `http://wyvern:8123`).
 | `src/app/main.cpp` | Implementation selection, stage orchestration, and reporting |
 | `src/app/settings.*` | Arguments, local connection settings, help |
 | `src/commands/command.hpp` | `Command`, `Device`, `Context`, `Result`, and the `Parser`/`Executor` interfaces |
-| `src/commands/services.hpp` | Shared domain/service/field catalog |
+| `src/commands/services.hpp` | Service catalogue types, filled by executor discovery |
 | `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
 | `src/speech/transcriber.hpp` | `Speech::Transcriber` interface |
 | `src/speech/whisper_transcriber.*` | Whisper model lifetime and speech-to-text |

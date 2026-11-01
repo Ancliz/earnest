@@ -1,0 +1,2250 @@
+[
+ {
+  "domain": "climate",
+  "services": {
+   "set_fan_mode": {
+    "fields": {
+     "fan_mode": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "fan_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        8
+       ]
+      }
+     ]
+    }
+   },
+   "set_humidity": {
+    "fields": {
+     "humidity": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 99.0,
+        "min": 30.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        4
+       ]
+      }
+     ]
+    }
+   },
+   "set_hvac_mode": {
+    "fields": {
+     "hvac_mode": {
+      "selector": {
+       "state": {
+        "hide_states": [
+         "unavailable",
+         "unknown"
+        ],
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ]
+      }
+     ]
+    }
+   },
+   "set_preset_mode": {
+    "fields": {
+     "preset_mode": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "preset_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        16
+       ]
+      }
+     ]
+    }
+   },
+   "set_swing_horizontal_mode": {
+    "fields": {
+     "swing_horizontal_mode": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "swing_horizontal_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        512
+       ]
+      }
+     ]
+    }
+   },
+   "set_swing_mode": {
+    "fields": {
+     "swing_mode": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "swing_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        32
+       ]
+      }
+     ]
+    }
+   },
+   "set_temperature": {
+    "fields": {
+     "hvac_mode": {
+      "selector": {
+       "state": {
+        "hide_states": [
+         "unavailable",
+         "unknown"
+        ],
+        "multiple": false
+       }
+      }
+     },
+     "temperature": {
+      "selector": {
+       "number": {
+        "max": 250.0,
+        "min": 0.0,
+        "mode": "box",
+        "step": 0.1
+       }
+      }
+     },
+     "temperature_range": {
+      "fields": {
+       "target_temp_high": {
+        "selector": {
+         "number": {
+          "max": 250.0,
+          "min": 0.0,
+          "mode": "box",
+          "step": 0.1
+         }
+        }
+       },
+       "target_temp_low": {
+        "selector": {
+         "number": {
+          "max": 250.0,
+          "min": 0.0,
+          "mode": "box",
+          "step": 0.1
+         }
+        }
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        1,
+        2
+       ]
+      }
+     ]
+    }
+   },
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        128,
+        256
+       ]
+      }
+     ]
+    }
+   },
+   "turn_off": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        128
+       ]
+      }
+     ]
+    }
+   },
+   "turn_on": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "climate"
+       ],
+       "supported_features": [
+        256
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "conversation",
+  "services": {
+   "process": {
+    "fields": {
+     "agent_id": {
+      "selector": {
+       "conversation_agent": {}
+      }
+     },
+     "conversation_id": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     },
+     "language": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     },
+     "text": {
+      "required": true,
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    }
+   },
+   "reload": {
+    "fields": {
+     "agent_id": {
+      "selector": {
+       "conversation_agent": {}
+      }
+     },
+     "language": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "domain": "cover",
+  "services": {
+   "close_cover": {
+    "fields": {
+     "speed": {
+      "selector": {
+       "state": {
+        "attribute": "speed",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        2
+       ]
+      }
+     ]
+    }
+   },
+   "close_cover_tilt": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        32
+       ]
+      }
+     ]
+    }
+   },
+   "open_cover": {
+    "fields": {
+     "speed": {
+      "selector": {
+       "state": {
+        "attribute": "speed",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "open_cover_tilt": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        16
+       ]
+      }
+     ]
+    }
+   },
+   "set_cover_position": {
+    "fields": {
+     "position": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     },
+     "speed": {
+      "selector": {
+       "state": {
+        "attribute": "speed",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        4
+       ]
+      }
+     ]
+    }
+   },
+   "set_cover_tilt_position": {
+    "fields": {
+     "tilt_position": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        128
+       ]
+      }
+     ]
+    }
+   },
+   "stop_cover": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        8
+       ]
+      }
+     ]
+    }
+   },
+   "stop_cover_tilt": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        64
+       ]
+      }
+     ]
+    }
+   },
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        3
+       ]
+      }
+     ]
+    }
+   },
+   "toggle_cover_tilt": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "cover"
+       ],
+       "supported_features": [
+        48
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "fan",
+  "services": {
+   "decrease_speed": {
+    "fields": {
+     "additional_fields": {
+      "fields": {
+       "percentage_step": {
+        "selector": {
+         "number": {
+          "max": 100.0,
+          "min": 0.0,
+          "mode": "slider",
+          "step": 1.0,
+          "unit_of_measurement": "%"
+         }
+        }
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "increase_speed": {
+    "fields": {
+     "additional_fields": {
+      "fields": {
+       "percentage_step": {
+        "selector": {
+         "number": {
+          "max": 100.0,
+          "min": 0.0,
+          "mode": "slider",
+          "step": 1.0,
+          "unit_of_measurement": "%"
+         }
+        }
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "oscillate": {
+    "fields": {
+     "oscillating": {
+      "required": true,
+      "selector": {
+       "boolean": {}
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        2
+       ]
+      }
+     ]
+    }
+   },
+   "set_direction": {
+    "fields": {
+     "direction": {
+      "required": true,
+      "selector": {
+       "select": {
+        "custom_value": false,
+        "multiple": false,
+        "options": [
+         "forward",
+         "reverse"
+        ],
+        "sort": false,
+        "translation_key": "direction"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        4
+       ]
+      }
+     ]
+    }
+   },
+   "set_percentage": {
+    "fields": {
+     "percentage": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "set_preset_mode": {
+    "fields": {
+     "preset_mode": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "preset_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        8
+       ]
+      }
+     ]
+    }
+   },
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ]
+      }
+     ]
+    }
+   },
+   "turn_off": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        16
+       ]
+      }
+     ]
+    }
+   },
+   "turn_on": {
+    "fields": {
+     "percentage": {
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     },
+     "preset_mode": {
+      "selector": {
+       "state": {
+        "attribute": "preset_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "fan"
+       ],
+       "supported_features": [
+        32
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "homeassistant",
+  "services": {
+   "check_config": {
+    "fields": {}
+   },
+   "reload_all": {
+    "fields": {}
+   },
+   "reload_config_entry": {
+    "fields": {
+     "entry_id": {
+      "required": true,
+      "selector": {
+       "config_entry": {}
+      }
+     }
+    }
+   },
+   "reload_core_config": {
+    "fields": {}
+   },
+   "reload_custom_templates": {
+    "fields": {}
+   },
+   "restart": {
+    "fields": {}
+   },
+   "save_persistent_states": {
+    "fields": {}
+   },
+   "set_location": {
+    "fields": {
+     "elevation": {
+      "selector": {
+       "number": {
+        "mode": "box",
+        "step": "any"
+       }
+      }
+     },
+     "latitude": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 90.0,
+        "min": -90.0,
+        "mode": "box",
+        "step": "any"
+       }
+      }
+     },
+     "longitude": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 180.0,
+        "min": -180.0,
+        "mode": "box",
+        "step": "any"
+       }
+      }
+     }
+    }
+   },
+   "stop": {
+    "fields": {}
+   },
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": []
+    }
+   },
+   "turn_off": {
+    "fields": {},
+    "target": {
+     "entity": []
+    }
+   },
+   "turn_on": {
+    "fields": {},
+    "target": {
+     "entity": []
+    }
+   },
+   "update_entity": {
+    "fields": {
+     "entity_id": {
+      "required": true,
+      "selector": {
+       "entity": {
+        "multiple": true,
+        "reorder": false
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "domain": "light",
+  "services": {
+   "toggle": {
+    "fields": {
+     "additional_fields": {
+      "fields": {
+       "brightness": {
+        "selector": {
+         "number": {
+          "max": 255.0,
+          "min": 0.0,
+          "mode": "slider",
+          "step": 1.0
+         }
+        }
+       },
+       "color_name": {
+        "selector": {
+         "select": {
+          "custom_value": false,
+          "multiple": false,
+          "options": [
+           "homeassistant",
+           "aliceblue",
+           "antiquewhite",
+           "aqua",
+           "aquamarine",
+           "azure",
+           "beige",
+           "bisque",
+           "blanchedalmond",
+           "blue",
+           "blueviolet",
+           "brown",
+           "burlywood",
+           "cadetblue",
+           "chartreuse",
+           "chocolate",
+           "coral",
+           "cornflowerblue",
+           "cornsilk",
+           "crimson",
+           "cyan",
+           "darkblue",
+           "darkcyan",
+           "darkgoldenrod",
+           "darkgray",
+           "darkgreen",
+           "darkgrey",
+           "darkkhaki",
+           "darkmagenta",
+           "darkolivegreen",
+           "darkorange",
+           "darkorchid",
+           "darkred",
+           "darksalmon",
+           "darkseagreen",
+           "darkslateblue",
+           "darkslategray",
+           "darkslategrey",
+           "darkturquoise",
+           "darkviolet",
+           "deeppink",
+           "deepskyblue",
+           "dimgray",
+           "dimgrey",
+           "dodgerblue",
+           "firebrick",
+           "floralwhite",
+           "forestgreen",
+           "fuchsia",
+           "gainsboro",
+           "ghostwhite",
+           "gold",
+           "goldenrod",
+           "gray",
+           "green",
+           "greenyellow",
+           "grey",
+           "honeydew",
+           "hotpink",
+           "indianred",
+           "indigo",
+           "ivory",
+           "khaki",
+           "lavender",
+           "lavenderblush",
+           "lawngreen",
+           "lemonchiffon",
+           "lightblue",
+           "lightcoral",
+           "lightcyan",
+           "lightgoldenrodyellow",
+           "lightgray",
+           "lightgreen",
+           "lightgrey",
+           "lightpink",
+           "lightsalmon",
+           "lightseagreen",
+           "lightskyblue",
+           "lightslategray",
+           "lightslategrey",
+           "lightsteelblue",
+           "lightyellow",
+           "lime",
+           "limegreen",
+           "linen",
+           "magenta",
+           "maroon",
+           "mediumaquamarine",
+           "mediumblue",
+           "mediumorchid",
+           "mediumpurple",
+           "mediumseagreen",
+           "mediumslateblue",
+           "mediumspringgreen",
+           "mediumturquoise",
+           "mediumvioletred",
+           "midnightblue",
+           "mintcream",
+           "mistyrose",
+           "moccasin",
+           "navajowhite",
+           "navy",
+           "navyblue",
+           "oldlace",
+           "olive",
+           "olivedrab",
+           "orange",
+           "orangered",
+           "orchid",
+           "palegoldenrod",
+           "palegreen",
+           "paleturquoise",
+           "palevioletred",
+           "papayawhip",
+           "peachpuff",
+           "peru",
+           "pink",
+           "plum",
+           "powderblue",
+           "purple",
+           "red",
+           "rosybrown",
+           "royalblue",
+           "saddlebrown",
+           "salmon",
+           "sandybrown",
+           "seagreen",
+           "seashell",
+           "sienna",
+           "silver",
+           "skyblue",
+           "slateblue",
+           "slategray",
+           "slategrey",
+           "snow",
+           "springgreen",
+           "steelblue",
+           "tan",
+           "teal",
+           "thistle",
+           "tomato",
+           "turquoise",
+           "violet",
+           "wheat",
+           "white",
+           "whitesmoke",
+           "yellow",
+           "yellowgreen"
+          ],
+          "sort": false,
+          "translation_key": "color_name"
+         }
+        }
+       },
+       "flash": {
+        "selector": {
+         "select": {
+          "custom_value": false,
+          "multiple": false,
+          "options": [
+           "long",
+           "short"
+          ],
+          "sort": false,
+          "translation_key": "flash"
+         }
+        }
+       },
+       "hs_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "profile": {
+        "selector": {
+         "text": {
+          "multiline": false,
+          "multiple": false
+         }
+        }
+       },
+       "rgbw_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "rgbww_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "white": {
+        "selector": {
+         "constant": {
+          "label": "Enabled",
+          "value": true
+         }
+        }
+       },
+       "xy_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       }
+      }
+     },
+     "brightness_pct": {
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     },
+     "color_temp_kelvin": {
+      "selector": {
+       "color_temp": {
+        "max": 6500,
+        "min": 2000,
+        "unit": "kelvin"
+       }
+      }
+     },
+     "effect": {
+      "selector": {
+       "state": {
+        "attribute": "effect",
+        "multiple": false
+       }
+      }
+     },
+     "rgb_color": {
+      "selector": {
+       "color_rgb": {}
+      }
+     },
+     "transition": {
+      "selector": {
+       "number": {
+        "max": 300.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "seconds"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "light"
+       ]
+      }
+     ]
+    }
+   },
+   "turn_off": {
+    "fields": {
+     "additional_fields": {
+      "fields": {
+       "flash": {
+        "selector": {
+         "select": {
+          "custom_value": false,
+          "multiple": false,
+          "options": [
+           "long",
+           "short"
+          ],
+          "sort": false,
+          "translation_key": "flash"
+         }
+        }
+       }
+      }
+     },
+     "transition": {
+      "selector": {
+       "number": {
+        "max": 300.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "seconds"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "light"
+       ]
+      }
+     ]
+    }
+   },
+   "turn_on": {
+    "fields": {
+     "additional_fields": {
+      "fields": {
+       "brightness": {
+        "selector": {
+         "number": {
+          "max": 255.0,
+          "min": 0.0,
+          "mode": "slider",
+          "step": 1.0
+         }
+        }
+       },
+       "brightness_step": {
+        "selector": {
+         "number": {
+          "max": 255.0,
+          "min": -225.0,
+          "mode": "slider",
+          "step": 1.0
+         }
+        }
+       },
+       "color_name": {
+        "selector": {
+         "select": {
+          "custom_value": false,
+          "multiple": false,
+          "options": [
+           "homeassistant",
+           "aliceblue",
+           "antiquewhite",
+           "aqua",
+           "aquamarine",
+           "azure",
+           "beige",
+           "bisque",
+           "blanchedalmond",
+           "blue",
+           "blueviolet",
+           "brown",
+           "burlywood",
+           "cadetblue",
+           "chartreuse",
+           "chocolate",
+           "coral",
+           "cornflowerblue",
+           "cornsilk",
+           "crimson",
+           "cyan",
+           "darkblue",
+           "darkcyan",
+           "darkgoldenrod",
+           "darkgray",
+           "darkgreen",
+           "darkgrey",
+           "darkkhaki",
+           "darkmagenta",
+           "darkolivegreen",
+           "darkorange",
+           "darkorchid",
+           "darkred",
+           "darksalmon",
+           "darkseagreen",
+           "darkslateblue",
+           "darkslategray",
+           "darkslategrey",
+           "darkturquoise",
+           "darkviolet",
+           "deeppink",
+           "deepskyblue",
+           "dimgray",
+           "dimgrey",
+           "dodgerblue",
+           "firebrick",
+           "floralwhite",
+           "forestgreen",
+           "fuchsia",
+           "gainsboro",
+           "ghostwhite",
+           "gold",
+           "goldenrod",
+           "gray",
+           "green",
+           "greenyellow",
+           "grey",
+           "honeydew",
+           "hotpink",
+           "indianred",
+           "indigo",
+           "ivory",
+           "khaki",
+           "lavender",
+           "lavenderblush",
+           "lawngreen",
+           "lemonchiffon",
+           "lightblue",
+           "lightcoral",
+           "lightcyan",
+           "lightgoldenrodyellow",
+           "lightgray",
+           "lightgreen",
+           "lightgrey",
+           "lightpink",
+           "lightsalmon",
+           "lightseagreen",
+           "lightskyblue",
+           "lightslategray",
+           "lightslategrey",
+           "lightsteelblue",
+           "lightyellow",
+           "lime",
+           "limegreen",
+           "linen",
+           "magenta",
+           "maroon",
+           "mediumaquamarine",
+           "mediumblue",
+           "mediumorchid",
+           "mediumpurple",
+           "mediumseagreen",
+           "mediumslateblue",
+           "mediumspringgreen",
+           "mediumturquoise",
+           "mediumvioletred",
+           "midnightblue",
+           "mintcream",
+           "mistyrose",
+           "moccasin",
+           "navajowhite",
+           "navy",
+           "navyblue",
+           "oldlace",
+           "olive",
+           "olivedrab",
+           "orange",
+           "orangered",
+           "orchid",
+           "palegoldenrod",
+           "palegreen",
+           "paleturquoise",
+           "palevioletred",
+           "papayawhip",
+           "peachpuff",
+           "peru",
+           "pink",
+           "plum",
+           "powderblue",
+           "purple",
+           "red",
+           "rosybrown",
+           "royalblue",
+           "saddlebrown",
+           "salmon",
+           "sandybrown",
+           "seagreen",
+           "seashell",
+           "sienna",
+           "silver",
+           "skyblue",
+           "slateblue",
+           "slategray",
+           "slategrey",
+           "snow",
+           "springgreen",
+           "steelblue",
+           "tan",
+           "teal",
+           "thistle",
+           "tomato",
+           "turquoise",
+           "violet",
+           "wheat",
+           "white",
+           "whitesmoke",
+           "yellow",
+           "yellowgreen"
+          ],
+          "sort": false,
+          "translation_key": "color_name"
+         }
+        }
+       },
+       "flash": {
+        "selector": {
+         "select": {
+          "custom_value": false,
+          "multiple": false,
+          "options": [
+           "long",
+           "short"
+          ],
+          "sort": false,
+          "translation_key": "flash"
+         }
+        }
+       },
+       "hs_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "profile": {
+        "selector": {
+         "text": {
+          "multiline": false,
+          "multiple": false
+         }
+        }
+       },
+       "rgbw_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "rgbww_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       },
+       "white": {
+        "selector": {
+         "constant": {
+          "label": "Enabled",
+          "value": true
+         }
+        }
+       },
+       "xy_color": {
+        "selector": {
+         "object": {
+          "multiple": false
+         }
+        }
+       }
+      }
+     },
+     "brightness_pct": {
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     },
+     "brightness_step_pct": {
+      "selector": {
+       "number": {
+        "max": 100.0,
+        "min": -100.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "%"
+       }
+      }
+     },
+     "color_temp_kelvin": {
+      "selector": {
+       "color_temp": {
+        "max": 6500,
+        "min": 2000,
+        "unit": "kelvin"
+       }
+      }
+     },
+     "effect": {
+      "selector": {
+       "state": {
+        "attribute": "effect",
+        "multiple": false
+       }
+      }
+     },
+     "rgb_color": {
+      "selector": {
+       "color_rgb": {}
+      }
+     },
+     "transition": {
+      "selector": {
+       "number": {
+        "max": 300.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 1.0,
+        "unit_of_measurement": "seconds"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "light"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "lock",
+  "services": {
+   "lock": {
+    "fields": {
+     "code": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "lock"
+       ]
+      }
+     ]
+    }
+   },
+   "open": {
+    "fields": {
+     "code": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "lock"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "unlock": {
+    "fields": {
+     "code": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "lock"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "media_player",
+  "services": {
+   "browse_media": {
+    "fields": {
+     "media_content_id": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     },
+     "media_content_type": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        131072
+       ]
+      }
+     ]
+    }
+   },
+   "clear_playlist": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        8192
+       ]
+      }
+     ]
+    }
+   },
+   "join": {
+    "fields": {
+     "group_members": {
+      "required": true,
+      "selector": {
+       "entity": {
+        "domain": [
+         "media_player"
+        ],
+        "multiple": true,
+        "reorder": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        524288
+       ]
+      }
+     ]
+    }
+   },
+   "media_next_track": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        32
+       ]
+      }
+     ]
+    }
+   },
+   "media_pause": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "media_play": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        16384
+       ]
+      }
+     ]
+    }
+   },
+   "media_play_pause": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        16385
+       ]
+      }
+     ]
+    }
+   },
+   "media_previous_track": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        16
+       ]
+      }
+     ]
+    }
+   },
+   "media_seek": {
+    "fields": {
+     "seek_position": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 9.223372036854776e+18,
+        "min": 0.0,
+        "mode": "box",
+        "step": 0.01
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        2
+       ]
+      }
+     ]
+    }
+   },
+   "media_stop": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        4096
+       ]
+      }
+     ]
+    }
+   },
+   "play_media": {
+    "fields": {
+     "announce": {
+      "selector": {
+       "boolean": {}
+      }
+     },
+     "enqueue": {
+      "selector": {
+       "select": {
+        "custom_value": false,
+        "multiple": false,
+        "options": [
+         "play",
+         "next",
+         "add",
+         "replace"
+        ],
+        "sort": false,
+        "translation_key": "enqueue"
+       }
+      }
+     },
+     "media": {
+      "required": true,
+      "selector": {
+       "media": {
+        "image_upload": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        512
+       ]
+      }
+     ]
+    }
+   },
+   "repeat_set": {
+    "fields": {
+     "repeat": {
+      "required": true,
+      "selector": {
+       "select": {
+        "custom_value": false,
+        "multiple": false,
+        "options": [
+         "off",
+         "all",
+         "one"
+        ],
+        "sort": false,
+        "translation_key": "repeat"
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        262144
+       ]
+      }
+     ]
+    }
+   },
+   "search_media": {
+    "fields": {
+     "media_content_id": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     },
+     "media_content_type": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     },
+     "media_filter_classes": {
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": true
+       }
+      }
+     },
+     "search_query": {
+      "required": true,
+      "selector": {
+       "text": {
+        "multiline": false,
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        4194304
+       ]
+      }
+     ]
+    }
+   },
+   "select_sound_mode": {
+    "fields": {
+     "sound_mode": {
+      "selector": {
+       "state": {
+        "attribute": "sound_mode",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        65536
+       ]
+      }
+     ]
+    }
+   },
+   "select_source": {
+    "fields": {
+     "source": {
+      "required": true,
+      "selector": {
+       "state": {
+        "attribute": "source",
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        2048
+       ]
+      }
+     ]
+    }
+   },
+   "shuffle_set": {
+    "fields": {
+     "shuffle": {
+      "required": true,
+      "selector": {
+       "boolean": {}
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        32768
+       ]
+      }
+     ]
+    }
+   },
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        384
+       ]
+      }
+     ]
+    }
+   },
+   "turn_off": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        256
+       ]
+      }
+     ]
+    }
+   },
+   "turn_on": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        128
+       ]
+      }
+     ]
+    }
+   },
+   "unjoin": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        524288
+       ]
+      }
+     ]
+    }
+   },
+   "volume_down": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        4,
+        1024
+       ]
+      }
+     ]
+    }
+   },
+   "volume_mute": {
+    "fields": {
+     "is_volume_muted": {
+      "required": true,
+      "selector": {
+       "boolean": {}
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        8
+       ]
+      }
+     ]
+    }
+   },
+   "volume_set": {
+    "fields": {
+     "volume_level": {
+      "required": true,
+      "selector": {
+       "number": {
+        "max": 1.0,
+        "min": 0.0,
+        "mode": "slider",
+        "step": 0.01
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        4
+       ]
+      }
+     ]
+    }
+   },
+   "volume_up": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "media_player"
+       ],
+       "supported_features": [
+        4,
+        1024
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "select",
+  "services": {
+   "select_first": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "select"
+       ]
+      }
+     ]
+    }
+   },
+   "select_last": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "select"
+       ]
+      }
+     ]
+    }
+   },
+   "select_next": {
+    "fields": {
+     "cycle": {
+      "selector": {
+       "boolean": {}
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "select"
+       ]
+      }
+     ]
+    }
+   },
+   "select_option": {
+    "fields": {
+     "option": {
+      "required": true,
+      "selector": {
+       "state": {
+        "hide_states": [
+         "unavailable",
+         "unknown"
+        ],
+        "multiple": false
+       }
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "select"
+       ]
+      }
+     ]
+    }
+   },
+   "select_previous": {
+    "fields": {
+     "cycle": {
+      "selector": {
+       "boolean": {}
+      }
+     }
+    },
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "select"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "domain": "switch",
+  "services": {
+   "toggle": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "switch"
+       ]
+      }
+     ]
+    }
+   },
+   "turn_off": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "switch"
+       ]
+      }
+     ]
+    }
+   },
+   "turn_on": {
+    "fields": {},
+    "target": {
+     "entity": [
+      {
+       "domain": [
+        "switch"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ }
+]

@@ -4,6 +4,7 @@
  */
 
 #include "check.hpp"
+#include "fixtures.hpp"
 #include "config/configuration.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "parser/regex_parser.hpp"
@@ -59,10 +60,19 @@ int main() {
         live[0]["attributes"]["volume_level"] = mode == 1 ? 0.7 : 0.4;
         response.set_content(live.dump(), "application/json");
     });
-    // Only volume_set is advertised, so other services fail the availability check.
+    // Real service definitions, minus media_pause so a missing service can be tested; counts fetches to check caching.
+    auto advertised = readFixture("services.json");
+    std::atomic<int> serviceFetches{0};
+
+    for(auto& group : advertised) {
+        if(group["domain"] == "media_player") {
+            group["services"].erase("media_pause");
+        }
+    }
+
     server.Get("/api/services", [&](const httplib::Request&, httplib::Response& response) {
-        response.set_content(R"([{"domain":"media_player","services":{"volume_set":{}}}])",
-                             "application/json");
+        ++serviceFetches;
+        response.set_content(advertised.dump(), "application/json");
     });
     // Mode 2 simulates a server error after the request is received.
     server.Post("/api/services/media_player/volume_set",
@@ -103,8 +113,9 @@ int main() {
         HomeAssistant client(url, "test-token");
         client.configure(configuration);
         Commands::Executor& executor = client;
-        const Context context{executor.discoverDevices()};
+        const Context context{executor.discoverDevices(), executor.discoverServices()};
         check(context.devices.size() == 3, "discovery returns every controllable entity");
+        check(context.services.count("media_player") && context.services.count("climate"), "discovery returns the advertised services");
         const auto command = parser.parse("set kitchen volume to forty", context);
         check(command && executor.preview(*command).success && posts == 0, "preview sends no POST");
         check(executor.execute(*command).success && posts == 1, "execute sends one POST");
@@ -120,6 +131,7 @@ int main() {
         check(missingService && !executor.preview(*missingService).success && posts == 1,
               "preview checks service availability too");
         check(!executor.execute(*missingService).success && posts == 1, "missing services never execute");
+        check(serviceFetches == 1, "the service catalogue is cached between commands");
         const Command conversation{"conversation", "process", "", {{"text", "turn off every AC zone"}}};
         check(!executor.execute(conversation).success && posts == 1,
               "a replacement parser cannot bypass policy through conversation");

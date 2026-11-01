@@ -54,6 +54,7 @@ if(BUILD_TESTING)
         add_executable(${name}_test tests/${name}_test.cpp)
         target_compile_options(${name}_test PRIVATE -Wall -Wextra -Wpedantic)
         target_link_libraries(${name}_test PRIVATE regex-parser home-assistant configuration audio app-settings command-worker)
+        target_compile_definitions(${name}_test PRIVATE SMARTHOME_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
         add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
 

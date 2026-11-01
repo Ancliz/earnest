@@ -4,9 +4,7 @@
  */
 
 #include "home_assistant.hpp"
-#include "commands/services.hpp"
 
-#include <algorithm>
 #include <stdexcept>
 
 using Commands::Command;
@@ -18,20 +16,138 @@ using std::string;
 
 namespace {
 /**
- * @brief Whether a /api/services array currently offers the command's service.
+ * @brief Domains voice may not control unless voice_control.allow names them.
  *
- * Integrations can be unloaded at runtime, so the static catalog alone is not enough.
+ * Security devices, system administration, notifications and assistants, automations and
+ * scripts (which can do anything), and helper or configuration entities that are not devices.
  */
-bool isAdvertised(const json& services, const Command& command) {
-    return std::any_of(services.begin(), services.end(), [&](const json& group) {
-        return group.is_object() && group.value("domain", string()) == command.domain &&
-               group.contains("services") && group["services"].is_object() &&
-               group["services"].contains(command.service);
-    });
+const std::set<string> defaultExclusions = {
+    "alarm_control_panel", "camera", "lock", "siren",
+    "backup", "cloud", "ffmpeg", "file", "frontend", "homeassistant", "logbook", "logger", "recorder", "system_log", "update",
+    "ai_task", "assist_satellite", "conversation", "notify", "persistent_notification", "tts",
+    "automation", "counter", "schedule", "script", "timer",
+    "button", "date", "datetime", "device_tracker", "image", "image_processing", "input_boolean", "input_button",
+    "input_datetime", "input_number", "input_select", "input_text", "number", "person", "shopping_list", "text",
+    "time", "todo", "weather", "zone"};
+
+/**
+ * @brief Read a list of domain or domain.service names from voice_control.
+ * @throws std::runtime_error If the entry is not a list of strings.
+ */
+std::set<string> readNames(const json& section, const char* key) {
+    std::set<string> names;
+
+    if(!section.contains(key)) {
+        return names;
+    }
+
+    if(!section[key].is_array()) {
+        throw runtime_error(string("voice_control.") + key + " must be a list");
+    }
+
+    for(const auto& name : section[key]) {
+        if(!name.is_string() || name.get<string>().empty()) {
+            throw runtime_error(string("voice_control.") + key + " must list domain or domain.service names");
+        }
+
+        names.insert(name.get<string>());
+    }
+
+    return names;
+}
+
+/**
+ * @brief Add a service's fields, descending into collapsible sections that group further fields.
+ */
+void addFields(const json& fields, Commands::ServiceFields& entry) {
+    if(!fields.is_object()) {
+        return;
+    }
+
+    for(const auto& [name, field] : fields.items()) {
+        if(!field.is_object()) {
+            continue;
+        } else if(field.contains("fields")) {
+            addFields(field["fields"], entry);
+            continue;
+        }
+
+        entry.allowed.insert(name);
+
+        if(field.value("required", false)) {
+            entry.required.insert(name);
+        }
+
+        if(field.contains("selector")) {
+            entry.selectors[name] = field["selector"];
+        }
+    }
 }
 } // namespace
 
-Devices controllableDevices(const json& states) {
+bool VoiceScope::allows(const string& domain, const string& service) const {
+    return !excluded.count(domain) && !excluded.count(domain + "." + service);
+}
+
+VoiceScope readVoiceScope(const json& configuration) {
+    VoiceScope scope{defaultExclusions};
+    const json section = configuration.is_object() ? configuration.value("voice_control", json::object()) : json();
+
+    if(!section.is_object()) {
+        throw runtime_error("voice_control must be a mapping");
+    }
+
+    for(const auto& name : readNames(section, "allow")) {
+        scope.excluded.erase(name);
+    }
+
+    for(const auto& name : readNames(section, "exclude")) {
+        scope.excluded.insert(name);
+    }
+
+    return scope;
+}
+
+ServiceCatalogue readServiceCatalogue(const json& services, const VoiceScope& scope) {
+    if(!services.is_array()) {
+        throw runtime_error("Home Assistant services must be a JSON array");
+    }
+
+    ServiceCatalogue catalogue;
+
+    for(const auto& group : services) {
+        const json domain = group.is_object() ? group.value("domain", json()) : json();
+
+        if(!domain.is_string() || !group.contains("services") || !group["services"].is_object()) {
+            continue;
+        }
+
+        for(const auto& [name, service] : group["services"].items()) {
+            // Services without an entity target (restart, notify, reload) are not device commands.
+            const bool targetsEntities = service.is_object() && service.contains("target") && service["target"].is_object() && service["target"].contains("entity");
+
+            if(!targetsEntities || !scope.allows(domain.get<string>(), name)) {
+                continue;
+            }
+
+            auto& entry = catalogue[domain.get<string>()][name];
+            addFields(service.value("fields", json::object()), entry);
+        }
+    }
+
+    // Relative volume is resolved into volume_set during validation, so it needs no Home Assistant field.
+    for(const char* step : {"volume_up", "volume_down"}) {
+        if(findService(catalogue, "media_player", step)) {
+            auto& entry = catalogue["media_player"][step];
+            entry.allowed.insert("amount");
+            entry.selectors["amount"] = {{"number", {{"min", 0}, {"max", 1}}}};
+        }
+    }
+
+    return catalogue;
+}
+
+Devices controllableDevices(const json& states, const ServiceCatalogue& services) {
     if(!states.is_array()) {
         throw runtime_error("Home Assistant states must be a JSON array");
     }
@@ -48,8 +164,8 @@ Devices controllableDevices(const json& states) {
         const string entity = entityId.get<string>();
         const auto dot = entity.find('.');
 
-        // Only domains the service catalogue can command are controllable; it is the one list to edit.
-        if(dot == string::npos || dot + 1 == entity.size() || !Commands::serviceCatalog().count(entity.substr(0, dot))) {
+        // A domain is controllable while Home Assistant offers it services that voice may use.
+        if(dot == string::npos || dot + 1 == entity.size() || !services.count(entity.substr(0, dot))) {
             continue;
         }
 
@@ -96,21 +212,42 @@ json HomeAssistant::getArray(const string& path) {
     return body;
 }
 
+bool HomeAssistant::refreshServices(bool force) {
+    const auto age = Clock::now() - fetched;
+
+    if(age < (force ? refetchInterval : catalogueLifetime)) {
+        return false;
+    }
+
+    services = readServiceCatalogue(getArray("/api/services"), scope);
+    fetched = Clock::now();
+    return true;
+}
+
 void HomeAssistant::configure(const json& configuration) {
-    policy = readAirflowPolicy(configuration);
+    auto nextPolicy = readAirflowPolicy(configuration);
+    scope = readVoiceScope(configuration);
+    policy = std::move(nextPolicy);
+    fetched = {};
 }
 
 Devices HomeAssistant::discoverDevices() {
-    return controllableDevices(getArray("/api/states"));
+    refreshServices();
+    return controllableDevices(getArray("/api/states"), services);
+}
+
+ServiceCatalogue HomeAssistant::discoverServices() {
+    refreshServices();
+    return services;
 }
 
 Result HomeAssistant::preview(const Command& command) {
     try {
-        auto result = validateCommand(command, discoverDevices(), policy);
+        auto result = validateCommand(command, discoverDevices(), services, policy);
 
-        if(result.success && !isAdvertised(getArray("/api/services"), result.command)) {
-            return {false, "Service is unavailable: " + result.command.domain + "." + result.command.service,
-                    result.command};
+        // A service the cached catalogue lacks may belong to a newly added integration; look again once.
+        if(!result.success && !findService(services, result.command.domain, result.command.service) && refreshServices(true)) {
+            result = validateCommand(command, discoverDevices(), services, policy);
         }
 
         return result;

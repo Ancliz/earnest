@@ -130,7 +130,7 @@ void CommandWorker::handle(Audio::Samples utterance) {
     }
 
     reloadConfiguration();
-    const auto command = parser.parse(*text, {executor.discoverDevices()});
+    const auto command = parser.parse(*text, {executor.discoverDevices(), executor.discoverServices()});
     logParsed(command);
 
     if(command) {

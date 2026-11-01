@@ -48,7 +48,7 @@ void printDevices(const Commands::Devices& devices) {
  */
 bool previewText(const string& text, Commands::Parser& parser, Commands::Executor& executor) {
     spdlog::info("Input: {}", text);
-    const auto command = parser.parse(text, {executor.discoverDevices()});
+    const auto command = parser.parse(text, {executor.discoverDevices(), executor.discoverServices()});
     logParsed(command);
     return command && logResult(executor.preview(*command), true);
 }

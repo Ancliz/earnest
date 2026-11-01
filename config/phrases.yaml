@@ -32,6 +32,11 @@ aliases:
   switch.ac_myfan:
   - my fan
   - automatic ac fan
+# Services and devices are discovered from Home Assistant. Security, system, automation and
+# helper domains are excluded by default; allow or exclude domains or domain.service names here.
+voice_control:
+  allow: []
+  exclude: []
 advantage_air:
   systems:
   - entity: climate.ac

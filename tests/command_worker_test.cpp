@@ -99,6 +99,11 @@ public:
     Commands::Devices discoverDevices() override { return {}; }
 
     /**
+     * @brief No services; the echo parser needs none.
+     */
+    Commands::ServiceCatalogue discoverServices() override { return {}; }
+
+    /**
      * @brief Accept every command.
      */
     Result preview(const Command& command) override { return {true, "", command}; }

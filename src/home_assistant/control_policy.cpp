@@ -15,6 +15,8 @@ using Commands::Command;
 using Commands::Device;
 using Commands::Devices;
 using Commands::json;
+using Commands::ServiceCatalogue;
+using Commands::findService;
 using std::runtime_error;
 using std::string;
 using std::vector;
@@ -128,7 +130,10 @@ string resolveRelativeVolume(Command& command, const Devices& devices) {
 }
 
 /**
- * @brief Check data fields against the service catalog and numeric ranges.
+ * @brief Check data fields against the service's discovered fields and their selectors.
+ *
+ * Number selectors bound values (levels 0..1, percentages 0..100); temperature limits come from
+ * the device instead, as the service's own range is far wider than any device's.
  * @return Rejection reason, or empty when the fields are acceptable.
  */
 string checkFields(const Command& command, const Commands::ServiceFields& fields) {
@@ -144,27 +149,29 @@ string checkFields(const Command& command, const Commands::ServiceFields& fields
         }
     }
 
-    // Levels are 0..1 and percentages 0..100; temperature limits come from the device instead.
-    for(const string field : {"volume_level", "brightness_pct", "percentage", "position", "temperature"}) {
-        if(!command.data.contains(field)) {
+    for(const auto& [field, selector] : fields.selectors) {
+        if(!command.data.contains(field) || !selector.is_object()) {
             continue;
         }
 
         const json& value = command.data.at(field);
 
-        if(!value.is_number() || !std::isfinite(value.get<double>())) {
+        if(selector.contains("boolean") && !value.is_boolean()) {
+            return "Expected true or false: " + field;
+        } else if(!selector.contains("number")) {
+            continue;
+        } else if(!value.is_number() || !std::isfinite(value.get<double>())) {
             return "Invalid numeric field: " + field;
         }
 
-        const double maximum = field == "volume_level" ? 1 : 100;
+        const json& range = selector["number"];
+        const double number = value.get<double>();
+        const bool belowMin = range.is_object() && range.value("min", json()).is_number() && number < range["min"].get<double>();
+        const bool aboveMax = range.is_object() && range.value("max", json()).is_number() && number > range["max"].get<double>();
 
-        if(field != "temperature" && (value.get<double>() < 0 || value.get<double>() > maximum)) {
+        if(belowMin || aboveMax) {
             return "Value is out of range: " + field;
         }
-    }
-
-    if(command.service == "volume_mute" && !command.data.at("is_volume_muted").is_boolean()) {
-        return "Missing mute boolean";
     }
 
     return "";
@@ -290,7 +297,7 @@ string checkAirflow(const Command& command, const Devices& devices, const Airflo
  * @brief Validate a command whose internal intents are already resolved.
  * @return Rejection reason, or empty when accepted.
  */
-string checkCommand(const Command& command, const Devices& devices, const AirflowPolicy& policy) {
+string checkCommand(const Command& command, const Devices& devices, const ServiceCatalogue& services, const AirflowPolicy& policy) {
     if(!command.data.is_object()) {
         return "Invalid request";
     }
@@ -313,10 +320,10 @@ string checkCommand(const Command& command, const Devices& devices, const Airflo
         return "Service domain does not match the device";
     }
 
-    const auto* fields = Commands::findService(command.domain, command.service);
+    const auto* fields = findService(services, command.domain, command.service);
 
     if(!fields) {
-        return "Unsupported service for device domain";
+        return "Service is unavailable: " + command.domain + "." + command.service;
     }
 
     string problem = checkFields(command, *fields);
@@ -432,12 +439,12 @@ AirflowPolicy readAirflowPolicy(const json& configuration) {
     return policy;
 }
 
-Commands::Result validateCommand(Command command, const Devices& devices, const AirflowPolicy& policy) {
+Commands::Result validateCommand(Command command, const Devices& devices, const ServiceCatalogue& services, const AirflowPolicy& policy) {
     try {
         string problem = resolveRelativeVolume(command, devices);
 
         if(problem.empty()) {
-            problem = checkCommand(command, devices, policy);
+            problem = checkCommand(command, devices, services, policy);
         }
 
         return {problem.empty(), problem, std::move(command)};

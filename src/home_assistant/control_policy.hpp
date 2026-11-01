@@ -49,9 +49,11 @@ AirflowPolicy readAirflowPolicy(const json& configuration);
  * @brief Resolve and validate a command against a device snapshot and the airflow policy.
  *
  * Converts relative volume into volume_set from the speaker's current level, then checks the
- * target, catalog fields, numeric ranges, device capabilities, temperature limits, selector
- * options, and AC airflow rules. Trusts nothing about the parser that produced the command.
+ * target, the service's discovered fields and their selectors (numeric ranges, booleans), device
+ * capabilities, temperature limits, select options, and AC airflow rules. Trusts nothing about
+ * the parser that produced the command.
  *
+ * @param[in] services Services commands may name, as discovered from Home Assistant.
  * @return Success with the resolved command, or the rejection reason. Never throws.
  */
-Result validateCommand(Command command, const Devices& devices, const AirflowPolicy& policy);
+Result validateCommand(Command command, const Devices& devices, const ServiceCatalogue& services, const AirflowPolicy& policy);

@@ -5,7 +5,6 @@
 
 #include "phrase_rules.hpp"
 #include "speech_text.hpp"
-#include "commands/services.hpp"
 
 #include <cctype>
 #include <set>
@@ -228,8 +227,8 @@ std::vector<Rule> compileRules(const json& configuration) {
         const bool volumeStep =
             rule.domain == "media_player" && (rule.service == "volume_up" || rule.service == "volume_down");
 
-        if(rule.id.empty() || !ids.insert(rule.id).second ||
-           !Commands::findService(rule.domain, rule.service) || !rule.body.is_object() ||
+        // Services are checked against Home Assistant's live catalogue when a command executes.
+        if(rule.id.empty() || !ids.insert(rule.id).second || rule.domain.empty() || rule.service.empty() || !rule.body.is_object() ||
            rule.body.contains("entity_id") || !rule.values.is_object() || (rule.relative && !volumeStep)) {
             throw runtime_error("Invalid or duplicate phrase rule: " + rule.id);
         }

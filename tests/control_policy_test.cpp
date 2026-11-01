@@ -4,6 +4,7 @@
  */
 
 #include "check.hpp"
+#include "fixtures.hpp"
 #include "config/configuration.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "parser/regex_parser.hpp"
@@ -13,6 +14,7 @@
 
 using Commands::Command;
 using Commands::Context;
+using Commands::findService;
 using Commands::json;
 using std::string;
 
@@ -31,6 +33,7 @@ json state(const string& entity, const string& status, const json& attributes = 
 int main() {
     const auto configuration = Config::readYamlFile(Config::defaultPhraseFile);
     const auto policy = readAirflowPolicy(configuration);
+    const auto services = readServiceCatalogue(readFixture("services.json"), readVoiceScope(configuration));
     RegexParser parser(configuration);
     const json states =
         json::array({state("climate.ac", "off",
@@ -62,7 +65,7 @@ int main() {
                      state("light.lamp", "off", {{"friendly_name", "Desk Lamp"}}),
                      state("fan.office", "on", {{"friendly_name", "Office Fan"}}),
                      state("switch.broken", "unavailable", {{"friendly_name", "Broken"}})});
-    const auto devices = controllableDevices(states);
+    const auto devices = controllableDevices(states, services);
     const Context context{devices};
     /*
      * @brief Parse text, require a command, and check its exact form.
@@ -84,18 +87,18 @@ int main() {
     const auto rejection = [&](const string& text, const json& snapshot) {
         const auto command = parser.parse(text, context);
         check(command.has_value(), "parses: " + text);
-        return validateCommand(*command, controllableDevices(snapshot), policy).error;
+        return validateCommand(*command, controllableDevices(snapshot, services), services, policy).error;
     };
 
     const auto temperature =
         expect("set the master bedroom temperature to twenty two",
                {"climate", "set_temperature", "climate.ac_master_bed", {{"temperature", 22}}});
-    check(validateCommand(temperature, devices, policy).success, "zone temperature allowed");
+    check(validateCommand(temperature, devices, services, policy).success, "zone temperature allowed");
     expect("set temperature in the master bedroom to twenty two degrees celsius",
            {"climate", "set_temperature", "climate.ac_master_bed", {{"temperature", 22}}});
     const auto start =
         expect("turn on the air conditioner", {"climate", "turn_on", "climate.ac", json::object()});
-    check(validateCommand(start, devices, policy).success, "main unit starts with its constant zone open");
+    check(validateCommand(start, devices, services, policy).success, "main unit starts with its constant zone open");
     expect("turn the tv and rump off", {"climate", "turn_off", "climate.ac_tv_rump", json::object()});
     expect("set the fan speed on the air conditioner to low",
            {"climate", "set_fan_mode", "climate.ac", {{"fan_mode", "low"}}});
@@ -119,20 +122,18 @@ int main() {
     check(rejection("turn the ac off", running).empty(), "main unit can always turn off");
     auto closed = states;
     closed[4]["state"] = "off";
-    check(!validateCommand(start, controllableDevices(closed), policy).success,
+    check(!validateCommand(start, controllableDevices(closed, services), services, policy).success,
           "main unit cannot start with its constant zone closed");
     auto changedPreset = states;
     changedPreset[0]["attributes"]["preset_mode"] = "MyZone";
-    check(!validateCommand(start, controllableDevices(changedPreset), policy).success,
+    check(!validateCommand(start, controllableDevices(changedPreset, services), services, policy).success,
           "a changed preset cannot reuse the verified constant-zone policy");
     auto missing = states;
     missing.erase(missing.begin() + 2);
-    check(!validateCommand(start, controllableDevices(missing), policy).success,
+    check(!validateCommand(start, controllableDevices(missing, services), services, policy).success,
           "a missing zone fails closed");
-    check(!validateCommand(start, devices, {}).success, "no installation policy blocks startup");
-    check(!validateCommand({"select", "select_option", "select.ac_myzone", {{"option", "Inactive"}}}, devices,
-                           policy)
-               .success,
+    check(!validateCommand(start, devices, services, {}).success, "no installation policy blocks startup");
+    check(!validateCommand({"select", "select_option", "select.ac_myzone", {{"option", "Inactive"}}}, devices, services, policy).success,
           "voice cannot change MyZone");
 
     // Commands that never came from the regex parser must be rejected on their own merits.
@@ -150,13 +151,13 @@ int main() {
              "climate.ac_master_bed",
              {{"temperature", 22}, {"entity_id", "climate.ac"}}},
             {"media_player", "volume_up", "media_player.kitchen", {{"amount", 2}}}}) {
-        check(!validateCommand(command, devices, policy).success,
+        check(!validateCommand(command, devices, services, policy).success,
               "untrusted command rejected: " + json(command).dump());
     }
 
     auto malformedStates = states;
     malformedStates[1]["attributes"] = nullptr;
-    check(!validateCommand(temperature, controllableDevices(malformedStates), policy).success,
+    check(!validateCommand(temperature, controllableDevices(malformedStates, services), services, policy).success,
           "malformed state is a rejection rather than an exception");
     checkThrows([] { readAirflowPolicy(json::array()); }, "a non-object configuration is rejected");
     checkThrows([] { readAirflowPolicy({{"advantage_air", {{"systems", {{{"entity", "climate.ac"}}}}}}}); },
@@ -169,10 +170,29 @@ int main() {
                             {{"entity_id", "media_player."}},
                             {{"entity_id", 42}},
                             nullptr};
-    const auto discovered = controllableDevices(discovery);
+    const auto discovered = controllableDevices(discovery, services);
     check(discovered.size() == 3 && discovered[0].name == "office" && discovered[1].name == "bedroom" &&
               discovered[1].attributes.is_object() && discovered[2].name == "spare",
           "discovery skips malformed entities and falls back to object IDs");
-    checkThrows([] { controllableDevices(json::object()); }, "discovery requires a state array");
+    checkThrows([&] { controllableDevices(json::object(), services); }, "discovery requires a state array");
+
+    // The catalogue comes from Home Assistant's own service list, within the voice scope.
+    const auto* volumeSet = findService(services, "media_player", "volume_set");
+    check(volumeSet && volumeSet->required.count("volume_level") && volumeSet->selectors.at("volume_level")["number"]["max"] == 1,
+          "fields, required flags and selectors are discovered");
+    check(findService(services, "climate", "set_temperature")->allowed.count("target_temp_high"), "fields inside collapsible sections are discovered");
+    check(findService(services, "media_player", "volume_up")->allowed.count("amount"), "relative volume accepts an amount");
+    check(!services.count("lock") && !services.count("homeassistant") && !services.count("conversation"), "security and system domains are excluded by default");
+    check(!validateCommand({"light", "turn_on", "light.lamp", {{"brightness_pct", 140}}}, devices, services, policy).success, "number selectors bound values");
+    check(!validateCommand({"media_player", "volume_mute", "media_player.kitchen", {{"is_volume_muted", "yes"}}}, devices, services, policy).success,
+          "boolean selectors require booleans");
+    check(controllableDevices(json::array({state("lock.front_door", "locked")}), services).empty(), "devices in excluded domains are not discovered");
+
+    const json scoped = {{"voice_control", {{"allow", {"lock"}}, {"exclude", {"media_player.volume_mute", "fan"}}}}};
+    const auto adjusted = readServiceCatalogue(readFixture("services.json"), readVoiceScope(scoped));
+    check(adjusted.count("lock") && !adjusted.count("fan"), "voice_control allows and excludes domains");
+    check(!findService(adjusted, "media_player", "volume_mute") && findService(adjusted, "media_player", "volume_set"), "voice_control excludes single services");
+    checkThrows([] { readVoiceScope({{"voice_control", {{"exclude", "lock"}}}}); }, "voice_control lists must be lists");
+    checkThrows([] { readServiceCatalogue(json::object(), {}); }, "services must be an array");
     std::cout << checks << " control policy checks passed\n";
 }

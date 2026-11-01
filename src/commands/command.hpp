@@ -5,16 +5,15 @@
 
 #pragma once
 
+#include "services.hpp"
+
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <nlohmann/json.hpp>
 
 namespace Commands {
-/// JSON value type used for configuration, attributes and service data.
-using json = nlohmann::json;
 using std::string;
 
 /**
@@ -89,6 +88,9 @@ struct Context {
     /// Devices discovered for this text.
     Devices devices;
 
+    /// Services the devices offer, as discovered alongside them.
+    ServiceCatalogue services;
+
     /// Entity used when the text names no device; ignored outside its own domain.
     string defaultDevice;
 
@@ -96,9 +98,9 @@ struct Context {
     bool fuzzyNames = true;
 
     /**
-     * @brief A context for the given devices with default preferences.
+     * @brief A context for the given devices and services with default preferences.
      */
-    Context(Devices devices = {}) : devices(std::move(devices)) {}
+    Context(Devices devices = {}, ServiceCatalogue services = {}) : devices(std::move(devices)), services(std::move(services)) {}
 };
 
 /**
@@ -165,6 +167,14 @@ public:
      * @throws std::exception If the devices cannot be queried.
      */
     virtual Devices discoverDevices() = 0;
+
+    /**
+     * @brief Services that commands may name right now, with their fields.
+     *
+     * Executors may cache this, as services change far less often than device states.
+     * @throws std::exception If the services cannot be queried.
+     */
+    virtual ServiceCatalogue discoverServices() = 0;
 
     /**
      * @brief Validate against live state and return what execute() would send, without sending it.
