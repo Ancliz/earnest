@@ -79,7 +79,7 @@ command independently of the parser that produced it.
 `Config::Configuration` owns file reads and transactional hot reload for both the
 parser and the executor. `HomeAssistant::preview` performs read-only live-state and
 service validation; `execute` performs the same checks and posts once. Relative
-volume is resolved against fresh state and sent as `volume_set`.
+volume is resolved against fresh state and sent as `volume_set`; without an amount it moves by 2%.
 
 See [the architecture notes](docs/architecture.md) for the interfaces and how to
 swap each stage.

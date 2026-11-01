@@ -86,21 +86,23 @@ bool isClosing(const Command& command) {
            command.data.value("hvac_mode", json()) == "off" || command.data.value("position", json()) == 0;
 }
 
+/// Volume change for "turn it up" or "down" when no amount is said.
+constexpr double defaultVolumeStep = 0.02;
+
 /**
- * @brief Turn volume_up/volume_down with an amount into volume_set from the speaker's current level.
+ * @brief Turn volume_up/volume_down into volume_set from the speaker's current level.
  * @return Rejection reason, or empty when resolved or not a relative command.
  */
 string resolveRelativeVolume(Command& command, const Devices& devices) {
-    const bool relative = command.domain == "media_player" && command.data.contains("amount") &&
-                          (command.service == "volume_up" || command.service == "volume_down");
+    const bool relative = command.domain == "media_player" && (command.service == "volume_up" || command.service == "volume_down");
 
     if(!relative) {
         return "";
     }
 
-    const json amount = command.data["amount"];
+    const json amount = command.data.value("amount", json(defaultVolumeStep));
 
-    if(command.data.size() != 1 || !amount.is_number()) {
+    if(command.data.size() > 1 || !amount.is_number()) {
         return "Invalid relative-volume command";
     }
 

@@ -9,6 +9,7 @@
 #include "home_assistant/home_assistant.hpp"
 #include "parser/regex_parser.hpp"
 
+#include <cmath>
 #include <iostream>
 #include <vector>
 
@@ -182,6 +183,10 @@ int main() {
           "fields, required flags and selectors are discovered");
     check(findService(services, "climate", "set_temperature")->allowed.count("target_temp_high"), "fields inside collapsible sections are discovered");
     check(findService(services, "media_player", "volume_up")->allowed.count("amount"), "relative volume accepts an amount");
+    const auto speaker = controllableDevices(json::array({state("media_player.kitchen", "playing", {{"volume_level", 0.5}})}), services);
+    const auto stepped = validateCommand({"media_player", "volume_down", "media_player.kitchen", json::object()}, speaker, services, policy);
+    check(stepped.success && stepped.command.service == "volume_set" && std::abs(stepped.command.data["volume_level"].get<double>() - 0.48) < 1e-9,
+          "relative volume without an amount moves by the default step");
     check(!services.count("lock") && !services.count("homeassistant") && !services.count("conversation"), "security and system domains are excluded by default");
     check(!validateCommand({"light", "turn_on", "light.lamp", {{"brightness_pct", 140}}}, devices, services, policy).success, "number selectors bound values");
     check(!validateCommand({"media_player", "volume_mute", "media_player.kitchen", {{"is_volume_muted", "yes"}}}, devices, services, policy).success,
