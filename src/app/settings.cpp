@@ -103,6 +103,8 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.phraseFile = value();
         } else if(arg == "--parser") {
             settings.parser = parserKind(value());
+        } else if(arg == "--ollama-model") {
+            settings.ollamaModel = value();
         } else if(arg == "--home") {
             settings.homeFile = value();
         } else if(arg == "--wake-word") {
@@ -189,7 +191,7 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
 }
 
 void printUsage(const std::string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser ollama|regex] [--phrases FILE] [--home FILE] "
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser ollama|regex] [--ollama-model NAME] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

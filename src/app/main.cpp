@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
         if((settings.parser ? *settings.parser : parserKind(connection.parser)) == ParserKind::Regex) {
             parser = std::make_unique<RegexParser>();
         } else {
-            parser = std::make_unique<OllamaParser>(connection.ollamaUrl, connection.ollamaModel);
+            parser = std::make_unique<OllamaParser>(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
         }
 
         std::unique_ptr<Commands::Executor> executor =

@@ -54,6 +54,9 @@ struct Settings {
     /// Parser selected with --parser; unset defers to PARSER in the connection settings.
     std::optional<ParserKind> parser;
 
+    /// Ollama model given with --ollama-model; empty defers to OLLAMA_MODEL.
+    std::string ollamaModel;
+
     /// Whisper GGML model path.
     std::string model = "models/ggml-base.en.bin";
 

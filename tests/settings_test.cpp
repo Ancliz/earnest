@@ -60,6 +60,7 @@ int main() {
     check(parse({"voice-test", "--help"}).mode == Mode::Help, "help");
     check(!parse({"voice-test"}).parser && parse({"voice-test", "--parser", "regex"}).parser == ParserKind::Regex, "the parser is selectable");
     checkThrows([] { parse({"voice-test", "--parser", "gpt"}); }, "an unknown parser is rejected");
+    check(parse({"voice-test", "--ollama-model", "llama3.2:3b"}).ollamaModel == "llama3.2:3b", "the Ollama model is selectable");
     const auto preview = parse({"voice-test", "--parse", "pause kitchen", "--cpu", "model.bin"});
     check(preview.mode == Mode::Parse && preview.parseText == "pause kitchen" && !preview.gpu &&
               preview.model == "model.bin",
