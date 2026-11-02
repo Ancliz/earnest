@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(smarthome LANGUAGES C CXX)
+project(earnest LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,8 +73,8 @@ if(SMARTHOME_BUILD_VOICE)
         GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
         GIT_TAG 4979e04f5dcaccb36057e059bbaed8a2f5288315) # v1.8.2
     FetchContent_MakeAvailable(whisper)
-    add_executable(voice-test src/app/main.cpp src/audio/microphone.cpp src/speech/whisper_transcriber.cpp)
-    target_compile_options(voice-test PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(voice-test PRIVATE regex-parser ollama-parser home-assistant audio app-settings command-worker
+    add_executable(earnest src/app/main.cpp src/audio/microphone.cpp src/speech/whisper_transcriber.cpp)
+    target_compile_options(earnest PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(earnest PRIVATE regex-parser ollama-parser home-assistant audio app-settings command-worker
         whisper PkgConfig::PORTAUDIO Threads::Threads)
 endif()

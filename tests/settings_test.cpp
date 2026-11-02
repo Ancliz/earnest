@@ -58,20 +58,20 @@ int main() {
     unsetenv("OLLAMA_URL");
     std::filesystem::remove(file);
 
-    check(parse({"voice-test"}).mode == Mode::Listen, "listening is the default mode");
-    check(parse({"voice-test", "--help"}).mode == Mode::Help, "help");
-    check(!parse({"voice-test"}).parser && parse({"voice-test", "--parser", "regex"}).parser == ParserKind::Regex, "the parser is selectable");
-    checkThrows([] { parse({"voice-test", "--parser", "gpt"}); }, "an unknown parser is rejected");
-    check(parse({"voice-test", "--ollama-model", "llama3.2:3b"}).ollamaModel == "llama3.2:3b", "the Ollama model is selectable");
-    const auto preview = parse({"voice-test", "--parse", "pause kitchen", "--cpu", "model.bin"});
+    check(parse({"earnest"}).mode == Mode::Listen, "listening is the default mode");
+    check(parse({"earnest", "--help"}).mode == Mode::Help, "help");
+    check(!parse({"earnest"}).parser && parse({"earnest", "--parser", "regex"}).parser == ParserKind::Regex, "the parser is selectable");
+    checkThrows([] { parse({"earnest", "--parser", "gpt"}); }, "an unknown parser is rejected");
+    check(parse({"earnest", "--ollama-model", "llama3.2:3b"}).ollamaModel == "llama3.2:3b", "the Ollama model is selectable");
+    const auto preview = parse({"earnest", "--parse", "pause kitchen", "--cpu", "model.bin"});
     check(preview.mode == Mode::Parse && preview.parseText == "pause kitchen" && !preview.gpu &&
               preview.model == "model.bin",
           "options combine with one mode");
-    checkThrows([] { parse({"voice-test", "--list-devices", "--parse", "pause kitchen"}); },
+    checkThrows([] { parse({"earnest", "--list-devices", "--parse", "pause kitchen"}); },
                 "conflicting modes are rejected");
-    checkThrows([] { parse({"voice-test", "--threads", "4x"}); }, "partial numbers are rejected");
-    checkThrows([] { parse({"voice-test", "--threads", "0"}); }, "out-of-range values are rejected");
-    checkThrows([] { parse({"voice-test", "--phrases"}); }, "a missing value is rejected");
-    checkThrows([] { parse({"voice-test", "a.bin", "b.bin"}); }, "only one model path is accepted");
+    checkThrows([] { parse({"earnest", "--threads", "4x"}); }, "partial numbers are rejected");
+    checkThrows([] { parse({"earnest", "--threads", "0"}); }, "out-of-range values are rejected");
+    checkThrows([] { parse({"earnest", "--phrases"}); }, "a missing value is rejected");
+    checkThrows([] { parse({"earnest", "a.bin", "b.bin"}); }, "only one model path is accepted");
     std::cout << checks << " settings checks passed\n";
 }

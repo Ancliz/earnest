@@ -1,16 +1,31 @@
-# Phrase configuration and API
+# Configuration and phrases
 
-The application reads two files. `config/phrases.yaml` holds the phrase rules every
-installation shares. `config/home.yaml` (not tracked by git; copy `config/home.example.yaml`)
-holds your own aliases, voice scope and optional AC policy, and is merged over the phrase
-file: objects merge, lists append, other values replace. It is optional, and `--home`
-chooses another path. Save changes to either while it runs: it checks once a
-second and again before parsing a completed transcript. No C++ rebuild is needed.
-A missing, malformed, or invalid replacement keeps the previous complete ruleset
-and airflow policy. The first load must succeed. This is a local, trusted config
-file: it defines the commands you authorize the application to send.
+## Configuration files
+
+The application reads two files:
+
+- `config/phrases.yaml`: the phrase rules every installation shares.
+- `config/home.yaml`: your own installation (aliases, `voice_control` and the optional
+  `advantage_air` policy). Copy `config/home.example.yaml` to start; git ignores it. It is
+  optional, and `--home` chooses another path.
+
+The home file is merged over the phrase file: objects merge, lists append, and other values
+replace. Save changes to either while it runs: it checks every 5 seconds while idle and before each command, and no
+rebuild is needed. A malformed or invalid replacement keeps the previous configuration; the
+first load must succeed. These are local, trusted files: they define what you authorise the
+application to send.
+
+The default parser, `OllamaParser`, needs neither phrase rules nor aliases: the model
+matches what was said against the discovered device names and services. `rules` and
+`aliases` drive `RegexParser`, the deterministic alternative selected with `--parser regex`.
+`voice_control` and `advantage_air` work the same whichever parser you choose. The parser only
+proposes a command; the Home Assistant executor then checks it against the voice scope and
+the AC airflow policy, if one is configured, before sending anything, so neither parser can
+get around them.
 
 ## Add a phrase
+
+Phrase rules are read by `RegexParser`.
 
 Find a rule with the intended domain/service, then add to `phrases`:
 
@@ -45,10 +60,10 @@ Noncapturing groups `(?:...)` do not affect those indexes. `value_type` is `volu
 `percent`, or `temperature`; regex numeric output is also available as `{value}`.
 
 An explicit `relative: true` on a media-player volume-up/down rule turns a spoken
-amount into a `volume_up`/`volume_down` command with a normalized `amount` field.
+amount into a `volume_up`/`volume_down` command with a normalised `amount` field.
 The executor reads the current volume immediately before execution, clamps the
-result to 0–1, and posts `volume_set`. A missing current volume rejects the command.
-An omitted optional amount uses the direct volume-up/down service. A rule may name any
+result to 0–1, and posts `volume_set`; an omitted amount moves 2%. A missing current
+volume rejects the command. A rule may name any
 service; whether Home Assistant offers it, and voice may use it, is checked against the
 discovered catalogue when the command executes.
 
@@ -85,10 +100,10 @@ std::unique_ptr<Commands::Executor> executor = std::make_unique<HomeAssistant>("
 Config::Configuration configuration(Config::defaultPhraseFile, [&](const Commands::json& candidate) {
     executor->configure(candidate);
     parser->configure(candidate);
-});
+}, Config::defaultHomeFile);
 
-const auto command = parser->parse("set master bedroom temperature to twenty two", {executor->discoverDevices(), executor->discoverServices()});
-// {"domain":"climate","service":"set_temperature","entity":"climate.ac_master_bed","data":{"temperature":22}}
+const auto command = parser->parse("set the bedroom temperature to twenty two", {executor->discoverDevices(), executor->discoverServices()});
+// {"domain":"climate","service":"set_temperature","entity":"climate.bedroom","data":{"temperature":22}}
 
 // Explicitly choose either a read-only preview or execution:
 const auto preview = executor->preview(*command);
@@ -97,20 +112,20 @@ const auto preview = executor->preview(*command);
 
 `Commands::Parser` defines `configure(configuration)` and `parse(text, context)`,
 returning at most one `Commands::Command`. `RegexParser` compiles rules once and does
-no file or network access; `configure` commits only after every rule compiles. An LLM
-parser implements the same interface (see `src/ollama/ollama_parser.hpp`).
+no file or network access; `configure` commits only after every rule compiles.
+`OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface.
 
 `Config::Configuration` performs file reads and reloads. `reloadIfChanged()` returns
 true when changed text is applied and throws when it is rejected; every consumer then
-keeps the previous configuration. Rejected text is not retried until the file changes.
-Configuration and parsing run on the main thread; synchronize externally if sharing
-these mutable objects between threads.
+keeps the previous configuration. Rejected text is not retried until a file changes.
+While listening, configuration, parsing and execution all run on the `CommandWorker`
+thread; synchronise externally if sharing these mutable objects between threads.
 
-`validateCommand(command, devices, policy)` is pure: it resolves relative volume and
-validates against the supplied device snapshot and `AirflowPolicy`. It returns a
+`validateCommand(command, devices, services, policy)` is pure: it resolves relative volume
+and validates against the supplied device snapshot, `ServiceCatalogue` and `AirflowPolicy`. It returns a
 `Commands::Result` with `success`, `error`, and the resolved `command`, and never throws.
 
-`HomeAssistant::preview` queries fresh state and service availability without posting.
+`HomeAssistant::preview` queries fresh state, and uses the cached service catalogue, without posting.
 `execute` uses that same preview before posting exactly once. It returns errors to the
 caller without logging, retrying, substituting modes, or opening zones automatically.
 The executor validates commands independently of the parser that supplied them.
@@ -118,28 +133,32 @@ The executor validates commands independently of the parser that supplied them.
 ## CLI tools
 
 ```sh
-./build/voice-test --check-phrases
-./build/voice-test --list-devices
-./build/voice-test --parse 'set the bedroom temperature to twenty two'
-./build/voice-test --phrases ./my-phrases.yaml --home ./my-home.yaml models/ggml-base.en.bin
+./build/earnest --check-phrases
+./build/earnest --list-devices
+./build/earnest --parse 'set the bedroom temperature to twenty two'
+./build/earnest --phrases ./my-phrases.yaml --home ./my-home.yaml models/ggml-base.en.bin
 ```
 
 `--check-phrases` needs no token/model/network. `--list-devices` and `--parse` use
 read-only queries, load no model, and send no control requests. `--parse`
 prints the proposed request, checks live capabilities and service availability,
-and prints the resolved request or rejection. Environment variables take
-precedence over values in the ignored `.env` file in the current directory.
-Reading that file returns connection settings and does not call `setenv`.
+and prints the resolved request or rejection.
+
+Settings are taken from the most specific source first: command-line options, then the
+ignored `.env` file in the current directory, then environment variables. Reading `.env`
+does not change the environment.
 Use `HOME_ASSISTANT_TOKEN` and optionally `HOME_ASSISTANT_URL` (full URL including
 port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
-`http://localhost:11434`) and `OLLAMA_MODEL` (default `qwen3.5:4b`). See `.env.example`.
+`http://localhost:11434`) and `OLLAMA_MODEL` (default `qwen3.5:4b`; `--ollama-model` overrides it) and `PARSER` (`ollama` or `regex`; `--parser` overrides it). See `.env.example`.
 
 ## Source layout
 
 | Path | Responsibility |
 | --- | --- |
-| `src/app/main.cpp` | Implementation selection, stage orchestration, and reporting |
-| `src/app/settings.*` | Arguments, local connection settings, help |
+| `src/app/main.cpp` | Implementation selection, modes and the capture loop |
+| `src/app/command_worker.*` | Worker thread: transcribe, filter, parse, execute, reload configuration |
+| `src/app/logging.*` | Console and file log sinks |
+| `src/app/settings.*` | Arguments, connection settings, help |
 | `src/commands/command.hpp` | `Command`, `Device`, `Context`, `Result`, and the `Parser`/`Executor` interfaces |
 | `src/commands/services.hpp` | Service catalogue types, filled by executor discovery |
 | `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
@@ -153,7 +172,7 @@ port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
 | `src/parser/regex_parser.*` | Regex backend and compiled rule snapshot |
 | `src/parser/phrase_rules.*` | Phrase DSL, regex compilation, rule validation |
 | `src/parser/device_names.*` | Domain-scoped exact/fuzzy name resolution |
-| `src/parser/speech_text.*` | Text normalization and spoken numbers |
-| `src/ollama/*` | Ollama client and the pending LLM parser declaration |
+| `src/parser/speech_text.*` | Text normalisation, spoken numbers, wake word and non-speech filters |
+| `src/ollama/*` | Ollama client and LLM parser |
 | `config/phrases.yaml` | Shared, editable phrase rules |
 | `config/home.example.yaml` | Template for the untracked `config/home.yaml`: aliases, voice scope, AC policy |

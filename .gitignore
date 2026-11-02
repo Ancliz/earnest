@@ -1,6 +1,6 @@
 /build*/
 /models/
-/voice-test
+/earnest
 
 # Local credentials
 .env

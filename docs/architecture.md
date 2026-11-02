@@ -2,7 +2,7 @@
 
 ```
 capture thread:  Microphone → UtteranceBuffer → CommandWorker::submit
-worker thread:   Speech::Transcriber → text
+worker thread:   Speech::Transcriber → text → wake-word and non-speech filters
 text + executor->discoverDevices() + discoverServices() → Commands::Parser → Commands::Command
 Commands::Command → Commands::Executor → preview (read-only) or execute (one POST)
 ```
@@ -14,7 +14,7 @@ Commands::Command → Commands::Executor → preview (read-only) or execute (one
   and submits them. It never waits on inference or the network, so speech is still heard
   while a command runs.
 - **Worker thread** (`CommandWorker`): transcribes, parses and executes each utterance in
-  order, and reloads the phrase file every second while idle. It is the only thread that
+  order, and reloads the configuration files every 5 seconds while idle and before each command. It is the only thread that
   touches the transcriber, parser, executor and configuration, so none of them need locks.
   At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes
   every queued utterance before returning.
@@ -26,7 +26,7 @@ implementations.
 | Interface | Methods | Current implementation |
 | --- | --- | --- |
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
-| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `OllamaParser` (`RegexParser` also available) |
+| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `OllamaParser`, or `RegexParser` with `--parser regex` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `HomeAssistant` |
 
 A `Commands::Command` is `{domain, service, entity, data}`. The services a command may
@@ -44,7 +44,7 @@ integration needs no configuration here:
   for number ranges and booleans.
 - A device is controllable when its domain offers at least one catalogued service.
 - Voice scope: security, system, notification, automation and helper domains (locks,
-  alarms, cameras, updates, scripts, `input_*`, ...) are excluded by default. The phrase
+  alarms, cameras, updates, scripts, `input_*`, ...) are excluded by default. The home
   file's `voice_control.allow` and `voice_control.exclude` adjust that with domain or
   `domain.service` names.
 - The catalogue is cached for a minute, as services change far less often than states.
@@ -54,7 +54,7 @@ integration needs no configuration here:
 ## Swapping a stage
 
 - **Parser:** derive from `Commands::Parser` and construct it in `main.cpp` instead of
-  `RegexParser`. An LLM parser can describe `context.services` as tools, list
+  `OllamaParser`. An LLM parser can describe `context.services` as tools, list
   `context.devices` in its prompt, and convert the chosen tool call into a `Command`.
   `Grammar::DeviceNames` can resolve a spoken device name if the model returns one.
   `OllamaParser` (`src/ollama/`) does this with a JSON schema instead of tools.
@@ -68,8 +68,8 @@ integration needs no configuration here:
 
 `Config::Configuration` reads `config/phrases.yaml`, merges the installation's
 `config/home.yaml` over it when present, and passes the result to every consumer
-through one callback: the executor reads `advantage_air` and `voice_control`, and the parser reads `rules`
-and `aliases`. When an edit is rejected, the previous configuration is applied again,
+through one callback: the executor reads `advantage_air` and `voice_control`, and
+`RegexParser` reads `rules` and `aliases` (`OllamaParser` needs neither). When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
 ## Side effects

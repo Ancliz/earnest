@@ -1,128 +1,148 @@
-# Smart-home voice commands
+# Earnest
 
-C++17 microphone recognition with whisper.cpp and PortAudio. English transcripts go through the regex command parser and recognized commands
-are posted to Home Assistant. Transcript and parsed-request printing is currently
-debug output, handled by `debugPrintTranscript`. Speech capture and parsing do not
-depend on that output.
+A voice assistant that lives in your house and stays there.
 
-## Build and run
+Say the wake word, ask for what you want ("turn the lounge speaker up a bit", "set the bedroom to
+twenty two") and it takes care of it. Speech is heard by [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
+understood by a local [Ollama](https://ollama.com) model, and carried out through
+[Home Assistant](https://www.home-assistant.io). Everything runs on your own machines: no cloud
+account, no audio leaving the network. If you'd rather not run a language model, or are unable to, a
+lightweight regex parser driven by editable phrase rules can understand commands instead
+(set `PARSER=regex` in `.env`, or run with `--parser regex`).
 
-Install CMake, a C++17 compiler, pkg-config, PortAudio development files, and
-nlohmann-json, libyaml development files, and cpp-httplib headers. CMake downloads the pinned whisper.cpp v1.8.2 source on first
-configuration; no Python runtime is needed.
+It learns your home rather than the other way round. Devices and the functionalities they have are
+discovered from Home Assistant, so a new speaker or light is ready to talk to as soon as Home
+Assistant knows about it. Every request is checked against the device's live state before
+anything is sent, so a misheard word is far more likely to be politely declined than to do
+something you didn't ask for.
+
+Controlling the home is where it starts. It is built as a set of swappable stages so that, over
+time, it can grow into a more general helper: something closer to a good butler than a remote
+control.
+
+## Getting started
+
+### Requirements
+
+- CMake, a C++17 compiler and pkg-config.
+- Development files for PortAudio, nlohmann-json, libyaml and cpp-httplib.
+- A Home Assistant server and a [long-lived access token](https://www.home-assistant.io/docs/authentication/#your-account-profile).
+- An Ollama server with a model installed (default `qwen3.5:4b`).
+- A microphone that supports mono float32 at 16 kHz.
+
+CMake downloads the pinned whisper.cpp v1.8.2 source on first configuration; no Python runtime
+is needed.
+
+### Build
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j 4
+cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 
-# Download the English base model (~142 MiB), then run from this directory:
+# Download the English base model (~142 MiB):
 bash build/_deps/whisper-src/models/download-ggml-model.sh base.en "$PWD/models"
-# Set HOME_ASSISTANT_TOKEN in your environment before starting.
-./build/voice-test models/ggml-base.en.bin
 ```
 
-The model is not bundled. To use an existing whisper.cpp checkout without downloading
-source, add `-DFETCHCONTENT_SOURCE_DIR_WHISPER=/path/to/whisper.cpp` when configuring.
-Use GGML `.bin` models, not the Moonshine ONNX models or faster-whisper model folders.
-
-```sh
-./build/voice-test --help
-./build/voice-test models/ggml-base.en.bin --threads 4 --threshold 0.007 --silence-ms 700 --cpu
-```
-
-The microphone must support mono float32 at 16 kHz. Capture runs separately from
-inference, buffering up to five seconds. Simple RMS energy detection retains 200 ms
-of leading audio, then submits an utterance after 700 ms of silence. Increase
-`--threshold` if room noise repeatedly triggers recognition; lower it for quiet
-speech. This energy detector is not a trained VAD and needs adjustment in noisy
-rooms. Utterances longer than 15 seconds and audio interrupted by buffer overflow
-are discarded until the next silence, rather than executing incomplete commands.
-Ctrl+C flushes the current buffered utterance and releases audio/model resources.
-Any audio still queued behind it when stopping is discarded.
-
-The default build is CPU-only: without a GPU backend compiled in, transcription runs on the
-CPU whether or not `--cpu` is given. To use a GPU, configure with one backend and rebuild:
+The default build transcribes on the CPU. A GPU build is recommended: it is much faster, and in
+practice it has transcribed commands more accurately with the same model. To use a GPU,
+configure with one backend and rebuild:
 
 - NVIDIA: `-DGGML_CUDA=ON` (needs the CUDA toolkit; on Arch, `cuda`, with `nvcc` in
   `/opt/cuda/bin`).
 - Other GPUs: `-DGGML_VULKAN=ON` (needs the Vulkan headers and `shaderc`).
 
-CMake caches these options, so switch one off explicitly (`-DGGML_VULKAN=OFF`) rather than
-just leaving it out. In a GPU build, `--cpu` forces CPU transcription at runtime.
+CMake caches these options, so switch one off explicitly (`-DGGML_VULKAN=OFF`) rather than just
+leaving it out. In a GPU build, `--cpu` forces CPU transcription at runtime.
 
-## Commands and discovery
+To use an existing whisper.cpp checkout instead of downloading it, add
+`-DFETCHCONTENT_SOURCE_DIR_WHISPER=/path/to/whisper.cpp` when configuring. Use GGML `.bin`
+models.
 
-See [the phrase guide](docs/phrases.md) for the YAML format and C++ API, and
-[the AdvantageAir notes](docs/advantage_air.md) for the optional zoned-AC safety policy.
-Copy `config/home.example.yaml` to `config/home.yaml` for your own aliases, voice scope and
-AC policy; it is not tracked by git. Edit `config/phrases.yaml` to add phrases; valid changes
-reload while the app runs, without recompiling. An invalid replacement keeps the
-last valid configuration.
+### Configure
+
+1. Copy `.env.example` to `.env` and set `HOME_ASSISTANT_TOKEN`. The same file sets the Home
+   Assistant and Ollama addresses and the Ollama model; it overrides environment variables, and command-line options override both.
+2. Optionally copy `config/home.example.yaml` to `config/home.yaml` for your own aliases (if using `RegexParser` parser), voice
+   scope and zoned-AC policy. Both files are ignored by git.
+
+### Run
 
 ```sh
-./build/voice-test --list-devices
-./build/voice-test --check-phrases
-./build/voice-test --parse 'set the bedroom temperature to twenty two'
+./build/earnest models/ggml-base.en.bin --wake-word "hey earnest"
 ```
 
-The discovery and dry-run modes send no control commands and require no Whisper
-model. Dry runs query both states and service availability. Copy `.env.example` to `.env` (ignored by git) and set `HOME_ASSISTANT_TOKEN`; the
-Home Assistant and Ollama URLs and the Ollama model are set there too. Environment
-variables override the file.
+Check things without speaking or changing anything:
 
-The pipeline has three swappable stages: a `Speech::Transcriber` turns audio into
-text, a `Commands::Parser` turns text into one `Commands::Command`, and a
-`Commands::Executor` discovers devices and runs commands. `WhisperTranscriber`,
-`RegexParser`, and `HomeAssistant` are the current implementations, selected in
-`src/app/main.cpp`. Parsing cannot post commands, and the executor validates every
-command independently of the parser that produced it.
+```sh
+./build/earnest --check-phrases     # validate the configuration files
+./build/earnest --list-devices      # what it can control
+./build/earnest --parse 'set the bedroom temperature to twenty two'   # dry run
+```
 
-`Config::Configuration` owns file reads and transactional hot reload for both the
-parser and the executor. `HomeAssistant::preview` performs read-only live-state and
-service validation; `execute` performs the same checks and posts once. Relative
-volume is resolved against fresh state and sent as `volume_set`; without an amount it moves by 2%.
+`--list-devices` and `--parse` make read-only requests and need no Whisper model. Run
+`--help` for every option, including `--parser`, `--ollama-model`, `--threads`, `--threshold`, `--silence-ms`, `--log-level`
+and `--log-file`.
 
-See [the architecture notes](docs/architecture.md) for the interfaces and how to
-swap each stage.
+## How it listens
 
-## Parser tests
+- **Utterances:** simple energy detection keeps 200 ms of leading audio and ends an utterance
+  after 700 ms of silence (`--silence-ms`). Raise `--threshold` if room noise triggers it, or
+  lower it for quiet speech. Utterances over 15 seconds, or interrupted by a capture overflow,
+  are discarded rather than run incomplete.
+- **Wake word:** with `--wake-word`, only speech that opens with it is acted on. Matching is
+  fuzzy, so "hey Travis"  for a wake work of "Jarvis" still counts, and an optional greeting
+  such as "hey" or "ok" is allowed.
+- **Noise:** Whisper segments with low confidence are dropped, and transcripts that are only
+  fillers or sound labels ("mhm", "[laughter]") are ignored.
+- **In the background:** commands run on their own thread, so it keeps listening while one is
+  carried out. Ctrl+C finishes what you've already said before stopping.
 
-To build just the parser and tests without downloading Whisper or needing PortAudio:
+## What it can control
+
+Devices and services come from Home Assistant, cached for a minute and refreshed when a new
+service appears. Security, system, automation and helper domains (locks, alarms, cameras,
+updates, scripts and the like) are left out of voice control by default; `voice_control` in
+`config/home.yaml` adjusts that.
+
+Before anything is sent, the command is checked against the device's live state: the service
+and its fields must exist, numbers must be in range, and a zoned AC system must keep enough
+airflow (see [the AdvantageAir notes](docs/advantage_air.md)). Relative volume ("up by 5", or
+just "up", which moves 2%) is calculated from the current level.
+
+## Tests
+
+To build the libraries and tests without Whisper or PortAudio:
 
 ```sh
 cmake -S . -B build-parser -DSMARTHOME_BUILD_VOICE=OFF
-cmake --build build-parser -j 8
+cmake --build build-parser -j"$(nproc)"
 ctest --test-dir build-parser --output-on-failure
 ```
 
-References: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
-[faster-whisper](https://github.com/SYSTRAN/faster-whisper).
+Tests use recorded Home Assistant responses and a loopback mock server; they never contact a
+real installation.
+
+## Documentation
+
+- [Architecture](docs/architecture.md): the pipeline stages, threads, service discovery and how
+  to swap each stage.
+- [Phrases and configuration](docs/phrases.md): the configuration files, the regex phrase
+  format, aliases and the C++ API.
+- [Zoned AC policy](docs/advantage_air.md): the optional airflow guard for ducted systems.
+
+Every class, type, function and method has a Doxygen comment. With Doxygen installed, run
+`doxygen docs/Doxyfile` from the repository root and open `build/docs/html/index.html`.
 
 ## Project layout
 
-- `src/app/`: startup, CLI/connection settings, implementation selection, and reporting.
-- `src/commands/`: the command vocabulary, service catalogue types, and parser/executor interfaces.
-- `src/config/`: bounded YAML decoding, file access, and transactional reload.
-- `src/speech/`: the transcriber interface and Whisper implementation.
+- `src/app/`: startup, settings, logging, implementation selection and the command worker.
 - `src/audio/`: microphone capture and utterance buffering.
-- `src/parser/`: the regex parser, phrase DSL, spoken numbers, and device-name matching.
-- `src/home_assistant/`: the Home Assistant executor, discovery, and control policy.
-- `src/ollama/`: Ollama client and the pending LLM parser.
-- `config/phrases.yaml`: shared, editable phrase rules.
-- `config/home.example.yaml`: template for the untracked `config/home.yaml` (aliases, voice scope, AC policy).
+- `src/speech/`: the transcriber interface and Whisper implementation.
+- `src/ollama/`: the Ollama client and LLM parser.
+- `src/parser/`: the regex parser, phrase rules, spoken numbers, wake word and name matching.
+- `src/commands/`: the shared command, device and service-catalogue types and interfaces.
+- `src/home_assistant/`: the Home Assistant executor, discovery and control policy.
+- `src/config/`: YAML decoding and configuration reloads.
+- `config/`: shared phrase rules, and the template for your installation file.
 - `tests/` and `docs/`: automated checks and supporting documentation.
-
-## API documentation
-
-Every class, type, function, and method has a Doxygen comment. Public contracts live
-in headers; private helpers and test callbacks are described beside their
-implementations.
-
-With Doxygen installed, generate the browsable reference from the repository root:
-
-```sh
-doxygen docs/Doxyfile
-```
-
-Open `build/docs/html/index.html`. Generated HTML/XML stays in the ignored build tree.
