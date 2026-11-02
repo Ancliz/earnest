@@ -51,9 +51,11 @@ int main() {
     check(!std::getenv("HOME_ASSISTANT_URL") && !std::getenv("HOME_ASSISTANT_TOKEN"),
           "reading settings does not change the environment");
     setenv("HOME_ASSISTANT_TOKEN", "environment-token", 1);
+    setenv("OLLAMA_URL", "http://environment.invalid:11434", 1);
     connection = readConnectionSettings(file.string());
-    check(connection.token == "environment-token" && connection.url == "http://example.invalid:8123",
-          "the environment overrides file values");
+    check(connection.token == "test-file-token" && connection.ollamaUrl == "http://environment.invalid:11434",
+          "file values override the environment, which fills the rest");
+    unsetenv("OLLAMA_URL");
     std::filesystem::remove(file);
 
     check(parse({"voice-test"}).mode == Mode::Listen, "listening is the default mode");

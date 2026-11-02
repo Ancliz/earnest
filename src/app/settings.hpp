@@ -122,7 +122,7 @@ struct ConnectionSettings {
 /**
  * @brief Read the connection settings from a dotenv file and the environment.
  *
- * Environment variables override file values, and a missing file is ignored. Lines may use an
+ * File values override environment variables, and a missing file is ignored. Lines may use an
  * "export " prefix and quoted values. The environment is never modified.
  *
  * @throws std::runtime_error For a non-comment line without "=".

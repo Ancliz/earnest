@@ -149,6 +149,13 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
                                                     {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}, {"PARSER", &settings.parser}};
     string line;
 
+    // The environment is the general fallback; this installation's file overrides it.
+    for(const auto& [name, setting] : keys) {
+        if(const char* value = std::getenv(name)) {
+            *setting = value;
+        }
+    }
+
     while(std::getline(input, line)) {
         line = trimWhitespace(line);
 
@@ -178,12 +185,6 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
             if(key == name) {
                 *setting = value;
             }
-        }
-    }
-
-    for(const auto& [name, setting] : keys) {
-        if(const char* value = std::getenv(name)) {
-            *setting = value;
         }
     }
 
