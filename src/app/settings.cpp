@@ -52,6 +52,14 @@ string trimWhitespace(const string& text) {
 }
 } // namespace
 
+ParserKind parserKind(const string& name) {
+    if(name != "ollama" && name != "regex") {
+        throw runtime_error("Parser must be ollama or regex, not \"" + name + "\"");
+    }
+
+    return name == "regex" ? ParserKind::Regex : ParserKind::Ollama;
+}
+
 Settings parseArguments(int argc, char* argv[]) {
     Settings settings;
     bool modelSet = false;
@@ -93,6 +101,8 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.parseText = value();
         } else if(arg == "--phrases") {
             settings.phraseFile = value();
+        } else if(arg == "--parser") {
+            settings.parser = parserKind(value());
         } else if(arg == "--home") {
             settings.homeFile = value();
         } else if(arg == "--wake-word") {
@@ -134,7 +144,7 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
     std::ifstream input(path);
     ConnectionSettings settings;
     const std::pair<const char*, string*> keys[] = {{"HOME_ASSISTANT_URL", &settings.url}, {"HOME_ASSISTANT_TOKEN", &settings.token},
-                                                    {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}};
+                                                    {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}, {"PARSER", &settings.parser}};
     string line;
 
     while(std::getline(input, line)) {
@@ -179,7 +189,7 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
 }
 
 void printUsage(const std::string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--phrases FILE] [--home FILE] "
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser ollama|regex] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

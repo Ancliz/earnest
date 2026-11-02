@@ -7,6 +7,7 @@
 
 #include "config/configuration.hpp"
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -27,6 +28,22 @@ enum class Mode {
 };
 
 /**
+ * @brief Which parser turns transcripts into commands.
+ */
+enum class ParserKind {
+    /// An Ollama language model.
+    Ollama,
+    /// Phrase rules from the configuration files; needs no model server.
+    Regex
+};
+
+/**
+ * @brief The parser named "ollama" or "regex".
+ * @throws std::runtime_error For any other name.
+ */
+ParserKind parserKind(const std::string& name);
+
+/**
  * @brief Options parsed from the command line.
  */
 struct Settings {
@@ -34,6 +51,9 @@ struct Settings {
     /// Selected mode.
     Mode mode = Mode::Listen;
     
+    /// Parser selected with --parser; unset defers to PARSER in the connection settings.
+    std::optional<ParserKind> parser;
+
     /// Whisper GGML model path.
     std::string model = "models/ggml-base.en.bin";
 
@@ -91,6 +111,9 @@ struct ConnectionSettings {
 
     /// Installed Ollama model name and tag (OLLAMA_MODEL).
     std::string ollamaModel = "qwen3.5:4b";
+
+    /// Parser used when --parser is not given (PARSER): "ollama" or "regex".
+    std::string parser = "ollama";
 };
 
 /**

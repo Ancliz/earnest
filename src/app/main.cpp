@@ -9,6 +9,7 @@
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
 #include "ollama/ollama_parser.hpp"
+#include "parser/regex_parser.hpp"
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 
@@ -112,7 +113,14 @@ int main(int argc, char* argv[]) {
 
         const auto connection = readConnectionSettings();
         // Swap point: each stage only sees the others through the Commands and Speech interfaces.
-        std::unique_ptr<Commands::Parser> parser = std::make_unique<OllamaParser>(connection.ollamaUrl, connection.ollamaModel);
+        std::unique_ptr<Commands::Parser> parser;
+
+        if((settings.parser ? *settings.parser : parserKind(connection.parser)) == ParserKind::Regex) {
+            parser = std::make_unique<RegexParser>();
+        } else {
+            parser = std::make_unique<OllamaParser>(connection.ollamaUrl, connection.ollamaModel);
+        }
+
         std::unique_ptr<Commands::Executor> executor =
             std::make_unique<HomeAssistant>(connection.url, connection.token);
         Config::Configuration configuration(settings.phraseFile, [&](const json& candidate) {

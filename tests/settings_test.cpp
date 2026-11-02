@@ -37,15 +37,17 @@ int main() {
     const auto file =
         std::filesystem::temp_directory_path() / ("smarthome-settings-" + std::to_string(getpid()) + ".env");
     std::ofstream(file) << " export HOME_ASSISTANT_URL = 'http://example.invalid:8123'\n"
-                           "# comment\nHOME_ASSISTANT_TOKEN=\"test-file-token\"\nOLLAMA_MODEL=test-model\n";
+                           "# comment\nHOME_ASSISTANT_TOKEN=\"test-file-token\"\nOLLAMA_MODEL=test-model\nPARSER=regex\n";
     unsetenv("HOME_ASSISTANT_URL");
     unsetenv("OLLAMA_URL");
     unsetenv("OLLAMA_MODEL");
+    unsetenv("PARSER");
     unsetenv("HOME_ASSISTANT_TOKEN");
     auto connection = readConnectionSettings(file.string());
     check(connection.url == "http://example.invalid:8123" && connection.token == "test-file-token",
           "file values are read and unquoted");
     check(connection.ollamaModel == "test-model" && connection.ollamaUrl == "http://localhost:11434", "Ollama settings are read, with defaults");
+    check(connection.parser == "regex", "the parser can be chosen in the file");
     check(!std::getenv("HOME_ASSISTANT_URL") && !std::getenv("HOME_ASSISTANT_TOKEN"),
           "reading settings does not change the environment");
     setenv("HOME_ASSISTANT_TOKEN", "environment-token", 1);
@@ -56,6 +58,8 @@ int main() {
 
     check(parse({"voice-test"}).mode == Mode::Listen, "listening is the default mode");
     check(parse({"voice-test", "--help"}).mode == Mode::Help, "help");
+    check(!parse({"voice-test"}).parser && parse({"voice-test", "--parser", "regex"}).parser == ParserKind::Regex, "the parser is selectable");
+    checkThrows([] { parse({"voice-test", "--parser", "gpt"}); }, "an unknown parser is rejected");
     const auto preview = parse({"voice-test", "--parse", "pause kitchen", "--cpu", "model.bin"});
     check(preview.mode == Mode::Parse && preview.parseText == "pause kitchen" && !preview.gpu &&
               preview.model == "model.bin",
