@@ -68,8 +68,8 @@ void CommandWorker::run() {
     while(true) {
         std::unique_lock<mutex> lock(queueMutex);
 
-        // Wake for new speech or a stop request, or after 10 seconds idle to check the phrase file.
-        if(!ready.wait_for(lock, std::chrono::seconds(10), [&] { return stopping || !pending.empty(); })) {
+        // Wake for new speech or a stop request, or after 5 seconds idle to check the configuration files.
+        if(!ready.wait_for(lock, std::chrono::seconds(5), [&] { return stopping || !pending.empty(); })) {
             lock.unlock();
             reloadConfiguration();
             continue;

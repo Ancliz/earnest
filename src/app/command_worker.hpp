@@ -36,7 +36,7 @@ bool logResult(const Commands::Result& result, bool preview);
  * The capture loop only submits audio, so it keeps listening while a command runs. The
  * transcriber, parser, executor and configuration are used from the worker thread alone, so they
  * need no locking; the caller must not use them while the worker exists. The phrase file is
- * reloaded every second while idle and before each command.
+ * reloaded every 5 seconds while idle and before each command.
  */
 class CommandWorker {
 
@@ -58,7 +58,7 @@ class CommandWorker {
     /// Phrase that must open each command; empty accepts every utterance.
     std::string wakeWord;
 
-    /// Last reload error reported, so a broken file is reported once rather than every second.
+    /// Last reload error reported, so a broken file is reported once rather than on every check.
     std::string lastReloadError;
 
     /// Guards pending and stopping.
