@@ -20,7 +20,11 @@
 #include <vector>
 
 using Commands::json;
+using Config::Configuration;
+using Speech::Transcriber;
 using std::string;
+using std::unique_ptr;
+using std::make_unique;
 
 namespace {
 
@@ -37,7 +41,7 @@ void requestStop(int) {
 /**
  * @brief Print each device as "entity | name | state".
  */
-void printDevices(const Commands::Devices& devices) {
+void printDevices(const Devices& devices) {
     for(const auto& device : devices) {
         spdlog::info("{} | {} | {}", device.entityId, device.name, device.state);
     }
@@ -47,7 +51,7 @@ void printDevices(const Commands::Devices& devices) {
  * @brief Parse typed text against live devices and print what would be sent, without sending it.
  * @return Whether a command was recognized and accepted.
  */
-bool previewText(const string& text, Commands::Parser& parser, Commands::Executor& executor) {
+bool previewText(const string& text, Parser& parser, Executor& executor) {
     spdlog::info("Input: {}", text);
     const auto command = parser.parse(text, {executor.discoverDevices(), executor.discoverServices()});
     logParsed(command);
@@ -60,14 +64,14 @@ bool previewText(const string& text, Commands::Parser& parser, Commands::Executo
  * This thread only captures and segments audio, so speech is still heard while a command runs.
  * A stop request still executes speech that is already buffered or queued.
  */
-void listen(const Settings& settings, Speech::Transcriber& transcriber, Commands::Parser& parser,
-            Commands::Executor& executor, Config::Configuration& configuration) {
+void listen(const Settings& settings, Transcriber& transcriber, Parser& parser,
+            Executor& executor, Configuration& configuration) {
     std::signal(SIGINT, requestStop);
     std::signal(SIGTERM, requestStop);
     Microphone microphone;
     UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
     CommandWorker worker(transcriber, parser, executor, configuration, settings.wakeWord);
-    Audio::Samples block;
+    Samples block;
     spdlog::info("Listening. Press Ctrl+C to stop.");
 
     while(running) {
@@ -112,18 +116,16 @@ int main(int argc, char* argv[]) {
         }
 
         const auto connection = readConnectionSettings();
-        // Swap point: each stage only sees the others through the Commands and Speech interfaces.
-        std::unique_ptr<Commands::Parser> parser;
+        unique_ptr<Parser> parser;
 
         if((settings.parser ? *settings.parser : parserKind(connection.parser)) == ParserKind::Regex) {
-            parser = std::make_unique<RegexParser>();
+            parser = make_unique<RegexParser>();
         } else {
-            parser = std::make_unique<OllamaParser>(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
+            parser = make_unique<OllamaParser>(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
         }
 
-        std::unique_ptr<Commands::Executor> executor =
-            std::make_unique<HomeAssistant>(connection.url, connection.token);
-        Config::Configuration configuration(settings.phraseFile, [&](const json& candidate) {
+        unique_ptr<Executor> executor = make_unique<HomeAssistant>(connection.url, connection.token);
+        Configuration configuration(settings.phraseFile, [&](const json& candidate) {
             executor->configure(candidate);
             parser->configure(candidate);
         }, settings.homeFile);
@@ -146,8 +148,8 @@ int main(int argc, char* argv[]) {
             return previewText(settings.parseText, *parser, *executor) ? 0 : 1;
         }
 
-        auto whisper = std::make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
-        std::vector<string> deviceNames;
+        auto whisper = make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
+        vector<string> deviceNames;
 
         // Device names spelled as Home Assistant spells them help Whisper hear them.
         for(const auto& device : executor->discoverDevices()) {
@@ -155,7 +157,7 @@ int main(int argc, char* argv[]) {
         }
 
         whisper->setVocabulary(deviceNames);
-        std::unique_ptr<Speech::Transcriber> transcriber = std::move(whisper);
+        unique_ptr<Transcriber> transcriber = std::move(whisper);
 
         listen(settings, *transcriber, *parser, *executor, configuration);
         

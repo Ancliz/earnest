@@ -13,6 +13,7 @@
 namespace Grammar {
 using std::regex;
 using std::runtime_error;
+using std::set;
 using std::size_t;
 
 namespace {
@@ -27,7 +28,7 @@ namespace {
  * @throws std::runtime_error For unknown or repeated slots and malformed optional sections.
  */
 string translatePhrase(const string& phrase, std::map<string, int>& slots) {
-    static const std::set<string> allowedSlots = {"device",      "volume", "percent",
+    static const set<string> allowedSlots = {"device",      "volume", "percent",
                                                   "temperature", "mode",   "option"};
     string result;
 
@@ -200,11 +201,11 @@ std::vector<Rule> compileRules(const json& configuration) {
         throw runtime_error("Phrase YAML needs version: 1 and 1..256 rules");
     }
 
-    static const std::set<string> ruleFields = {"id",       "domain",       "service",     "phrases",
+    static const set<string> ruleFields = {"id",       "domain",       "service",     "phrases",
                                                 "regex",    "device_group", "value_group", "value_type",
                                                 "relative", "body",         "values"};
     std::vector<Rule> rules;
-    std::set<string> ids;
+    set<string> ids;
 
     for(const auto& row : configuration["rules"]) {
         if(!row.is_object()) {

@@ -9,6 +9,8 @@
 #include <deque>
 #include <optional>
 
+using Audio::Samples;
+
 /**
  * @brief Groups 100 ms audio blocks into utterances separated by silence.
  *
@@ -32,10 +34,10 @@ public:
 
 private:
     /// Samples of the utterance in progress.
-    Audio::Samples audio;
+    Samples audio;
 
     /// Quiet blocks kept so the start of speech is not clipped.
-    std::deque<Audio::Samples> preroll;
+    std::deque<Samples> preroll;
 
     /// Speech blocks in the current utterance.
     int voicedBlocks = 0;
@@ -80,12 +82,12 @@ public:
      * @brief Emit the buffered utterance now, as on shutdown, and clear the buffer.
      * @return Utterance, or nullopt for silence, brief noise, or discarded audio.
      */
-    std::optional<Audio::Samples> finish();
+    std::optional<Samples> finish();
 
     /**
      * @brief Add one 100 ms block.
      * @param[in] discontinuity Whether capture lost audio before this block.
      * @return The completed utterance when this block ends it, otherwise nullopt.
      */
-    std::optional<Audio::Samples> append(const Audio::Samples& block, bool discontinuity);
+    std::optional<Samples> append(const Samples& block, bool discontinuity);
 };

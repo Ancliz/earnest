@@ -19,12 +19,12 @@ using namespace Commands;
 struct VoiceScope {
 
     /// Excluded domains ("lock") and services ("media_player.join").
-    std::set<std::string> excluded;
+    set<string> excluded;
 
     /**
      * @brief Whether commands may name domain.service.
      */
-    bool allows(const std::string& domain, const std::string& service) const;
+    bool allows(const string& domain, const string& service) const;
 };
 
 /**
@@ -97,7 +97,7 @@ class HomeAssistant final : public Executor {
      * @brief GET an API path that returns a JSON array.
      * @throws std::runtime_error For transport errors, non-200 statuses or non-array bodies.
      */
-    json getArray(const std::string& path);
+    json getArray(const string& path);
 
     /**
      * @brief Fetch the catalogue when it is older than its lifetime, or than the refetch interval if forced.
@@ -111,7 +111,7 @@ public:
      * @param[in] url Origin including scheme and optional port, such as "http://homeassistant.local:8123".
      * @param[in] token Long-lived access token.
      */
-    HomeAssistant(const std::string& url, const std::string& token);
+    HomeAssistant(const string& url, const string& token);
 
     /**
      * @brief Apply the advantage_air and voice_control sections, and refetch services on next use.

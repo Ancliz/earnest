@@ -142,7 +142,7 @@ Settings parseArguments(int argc, char* argv[]) {
     return settings;
 }
 
-ConnectionSettings readConnectionSettings(const std::string& path) {
+ConnectionSettings readConnectionSettings(const string& path) {
     std::ifstream input(path);
     ConnectionSettings settings;
     const std::pair<const char*, string*> keys[] = {{"HOME_ASSISTANT_URL", &settings.url}, {"HOME_ASSISTANT_TOKEN", &settings.token},
@@ -191,7 +191,7 @@ ConnectionSettings readConnectionSettings(const std::string& path) {
     return settings;
 }
 
-void printUsage(const std::string& executable) {
+void printUsage(const string& executable) {
     spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser ollama|regex] [--ollama-model NAME] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);

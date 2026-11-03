@@ -16,9 +16,13 @@
 #include <vector>
 
 namespace Grammar {
+using std::istringstream;
+using std::max;
+using std::min;
 using std::nullopt;
 using std::optional;
 using std::regex;
+using std::regex_replace;
 using std::vector;
 
 namespace {
@@ -72,7 +76,7 @@ string normalizeText(const string& text) {
     }
 
     static const regex spaces(R"(\s+)");
-    return trim(std::regex_replace(result, spaces, " "));
+    return trim(regex_replace(result, spaces, " "));
 }
 
 string normalizeName(const string& name) {
@@ -96,7 +100,7 @@ bool hasPercentSuffix(const string& text) {
 optional<double> parseLevel(string text) {
     text = trim(text);
     const bool percent = hasPercentSuffix(text);
-    text = trim(std::regex_replace(text, percentSuffix(), ""));
+    text = trim(regex_replace(text, percentSuffix(), ""));
     static const regex digits(R"((?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))");
 
     if(std::regex_match(text, digits)) {
@@ -140,7 +144,7 @@ optional<double> parseLevel(string text) {
 
         double place = 0.1;
         bool anyDigit = false;
-        std::istringstream digitWords(text.substr(point + 6));
+        istringstream digitWords(text.substr(point + 6));
 
         // Each word after "point" is one more decimal digit.
         for(string word; digitWords >> word; place *= 0.1) {
@@ -201,7 +205,7 @@ bool isNonSpeech(const string& text) {
     static const regex labels(R"(\([^)]*\)|\[[^\]]*\]|\*[^*]*\*)");
     // Laughter, hums and hesitations, allowing drawn-out spellings such as "hmmm" and "uhhh".
     static const regex filler(R"((?:ha|he|hi|ho)+h?|m+(?:h+m+)*|h+m+|u+[hm]+|h+u+h+|e+r+m*|e+h+|a+h+|o+h*)");
-    std::istringstream stream(normalizeText(std::regex_replace(text, labels, " ")));
+    istringstream stream(normalizeText(regex_replace(text, labels, " ")));
     string word;
 
     while(stream >> word) {
@@ -217,7 +221,7 @@ bool isNonSpeech(const string& text) {
 }
 
 optional<string> stripWakeWord(const string& text, const string& wakePhrase) {
-    std::istringstream wakeStream(normalizeText(wakePhrase)), textStream(normalizeText(text));
+    istringstream wakeStream(normalizeText(wakePhrase)), textStream(normalizeText(text));
     const vector<string> wake{std::istream_iterator<string>(wakeStream), {}};
     const vector<string> words{std::istream_iterator<string>(textStream), {}};
 
@@ -233,13 +237,13 @@ optional<string> stripWakeWord(const string& text, const string& wakePhrase) {
         target += word;
     }
 
-    const auto limit = std::min<size_t>(3, std::max<size_t>(1, (target.size() + 1) / 2));
+    const auto limit = min<size_t>(3, max<size_t>(1, (target.size() + 1) / 2));
 
     size_t bestCount = 0, bestEdits = limit + 1;
 
     // Compare the phrase without spaces against one word fewer, as many, and one more, so a phrase
     // Whisper splits ("jar vis") or merges still matches; the closest span wins.
-    for(size_t count = std::max<size_t>(1, wake.size() - 1); count <= wake.size() + 1 && start + count <= words.size(); ++count) {
+    for(size_t count = max<size_t>(1, wake.size() - 1); count <= wake.size() + 1 && start + count <= words.size(); ++count) {
         string heard;
 
         for(size_t i = start; i < start + count; ++i) {

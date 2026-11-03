@@ -15,6 +15,7 @@
 using Commands::Command;
 using Commands::Context;
 using Commands::json;
+using Config::readYaml;
 using std::string;
 
 /**
@@ -74,8 +75,8 @@ int main() {
     write(pauseRule + "    body: {}\n");
     check(!configuration.reloadIfChanged(), "restoring the active text is not a change");
 
-    checkThrows([] { Config::readYaml("version: 1\nversion: 2\n"); }, "duplicate YAML keys rejected");
-    checkThrows([] { Config::readYaml("a: 1\n---\nb: 2\n"); }, "extra YAML documents rejected");
+    checkThrows([] { readYaml("version: 1\nversion: 2\n"); }, "duplicate YAML keys rejected");
+    checkThrows([] { readYaml("a: 1\n---\nb: 2\n"); }, "extra YAML documents rejected");
     string expansion = "a: &a [0, 0, 0, 0, 0, 0, 0, 0]\n";
 
     // Each line repeats the previous alias eight times, so six lines expand to over 32768 nodes.
@@ -89,7 +90,7 @@ int main() {
         expansion += "]\n";
     }
 
-    checkThrows([&] { Config::readYaml(expansion); }, "alias expansion is bounded");
+    checkThrows([&] { readYaml(expansion); }, "alias expansion is bounded");
     std::filesystem::remove_all(directory);
     std::cout << checks << " configuration checks passed\n";
 }

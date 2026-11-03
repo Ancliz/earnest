@@ -13,13 +13,14 @@
 #include <yaml.h>
 
 using std::runtime_error;
+using std::size_t;
 using std::string;
 
 namespace Config {
 namespace {
 
 /// Largest accepted configuration, in bytes.
-constexpr std::size_t maxBytes = 256 * 1024;
+constexpr size_t maxBytes = 256 * 1024;
 
 /// Deepest accepted nesting, which also bounds alias cycles.
 constexpr unsigned maxDepth = 16;
@@ -44,8 +45,7 @@ struct YamlParser {
             throw runtime_error("Cannot initialize YAML parser");
         }
 
-        yaml_parser_set_input_string(&handle, reinterpret_cast<const unsigned char*>(text.data()),
-                                     text.size());
+        yaml_parser_set_input_string(&handle, reinterpret_cast<const unsigned char*>(text.data()), text.size());
     }
 
     /**
@@ -97,12 +97,12 @@ string readFile(const string& path) {
     stream.seekg(0, std::ios::end);
     const auto size = stream.tellg();
 
-    if(size < 1 || static_cast<std::size_t>(size) > maxBytes) {
+    if(size < 1 || static_cast<size_t>(size) > maxBytes) {
         throw runtime_error("Configuration YAML must contain 1..262144 bytes");
     }
 
     stream.seekg(0);
-    string text(static_cast<std::size_t>(size), '\0');
+    string text(static_cast<size_t>(size), '\0');
     stream.read(text.data(), static_cast<std::streamsize>(text.size()));
 
     if(!stream || stream.peek() != std::char_traits<char>::eof()) {
@@ -195,7 +195,7 @@ json toJson(yaml_document_t& document, yaml_node_t* node, unsigned depth, unsign
 }
 } // namespace
 
-json readYaml(const std::string& text) {
+json readYaml(const string& text) {
     if(text.empty() || text.size() > maxBytes) {
         throw runtime_error("Phrase YAML must contain 1..262144 bytes");
     }
@@ -213,7 +213,7 @@ json readYaml(const std::string& text) {
     return result;
 }
 
-json readYamlFile(const std::string& path) {
+json readYamlFile(const string& path) {
     return readYaml(readFile(path));
 }
 

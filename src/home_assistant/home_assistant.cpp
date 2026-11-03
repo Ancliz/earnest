@@ -21,7 +21,7 @@ namespace {
  * Security devices, system administration, notifications and assistants, automations and
  * scripts (which can do anything), and helper or configuration entities that are not devices.
  */
-const std::set<string> defaultExclusions = {
+const set<string> defaultExclusions = {
     "alarm_control_panel", "camera", "lock", "siren",
     "backup", "cloud", "ffmpeg", "file", "frontend", "homeassistant", "logbook", "logger", "recorder", "system_log", "update",
     "ai_task", "assist_satellite", "conversation", "notify", "persistent_notification", "tts",
@@ -34,8 +34,8 @@ const std::set<string> defaultExclusions = {
  * @brief Read a list of domain or domain.service names from voice_control.
  * @throws std::runtime_error If the entry is not a list of strings.
  */
-std::set<string> readNames(const json& section, const char* key) {
-    std::set<string> names;
+set<string> readNames(const json& section, const char* key) {
+    set<string> names;
 
     if(!section.contains(key)) {
         return names;
@@ -59,7 +59,7 @@ std::set<string> readNames(const json& section, const char* key) {
 /**
  * @brief Add a service's fields, descending into collapsible sections that group further fields.
  */
-void addFields(const json& fields, Commands::ServiceFields& entry) {
+void addFields(const json& fields, ServiceFields& entry) {
     if(!fields.is_object()) {
         return;
     }

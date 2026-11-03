@@ -13,8 +13,11 @@ using Commands::Command;
 using Commands::json;
 using Grammar::Pattern;
 using Grammar::Rule;
+using std::nullopt;
 using std::optional;
 using std::regex;
+using std::regex_replace;
+using std::smatch;
 using std::string;
 
 namespace {
@@ -24,7 +27,7 @@ namespace {
 string stripPoliteness(const string& text) {
     static const regex prefix(R"(^(?:(?:please|hey|okay|ok) |(?:can|could|would) you (?:please )?)+)");
     static const regex suffix(R"( please$)");
-    return std::regex_replace(std::regex_replace(text, prefix, ""), suffix, "");
+    return regex_replace(regex_replace(text, prefix, ""), suffix, "");
 }
 
 /**
@@ -37,7 +40,7 @@ string stripPoliteness(const string& text) {
  */
 optional<double> slotNumber(const string& slot, string spoken) {
     static const regex degrees(R"( (?:degrees?)(?: celsius)?$)");
-    spoken = std::regex_replace(spoken, degrees, "");
+    spoken = regex_replace(spoken, degrees, "");
     const bool explicitPercent = Grammar::hasPercentSuffix(spoken);
 
     if(slot == "volume") {
@@ -45,11 +48,11 @@ optional<double> slotNumber(const string& slot, string spoken) {
     }
 
     if(slot == "temperature" && explicitPercent) {
-        return std::nullopt;
+        return nullopt;
     }
 
     const auto level = Grammar::parseLevel(explicitPercent ? spoken : spoken + " percent");
-    return level ? optional<double>(*level * 100) : std::nullopt;
+    return level ? optional<double>(*level * 100) : nullopt;
 }
 
 /**
@@ -60,7 +63,7 @@ optional<double> slotNumber(const string& slot, string spoken) {
  *
  * @return Slot values by name, or nullopt when a number is invalid.
  */
-optional<json> captureSlots(const Rule& rule, const Pattern& pattern, const std::smatch& match) {
+optional<json> captureSlots(const Rule& rule, const Pattern& pattern, const smatch& match) {
     json captured = json::object();
 
     for(const auto& [slot, group] : pattern.slots) {
@@ -74,7 +77,7 @@ optional<json> captureSlots(const Rule& rule, const Pattern& pattern, const std:
             const auto number = slotNumber(slot, spoken);
 
             if(!number) {
-                return std::nullopt;
+                return nullopt;
             }
 
             captured[slot] = *number;
@@ -102,7 +105,7 @@ optional<json> fillTemplate(const json& body, const json& captured) {
         }
 
         if(!captured.contains(slot)) {
-            return std::nullopt;
+            return nullopt;
         }
 
         field = captured[slot];
@@ -118,18 +121,18 @@ optional<json> fillTemplate(const json& body, const json& captured) {
  */
 optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const string& text,
                                const Grammar::DeviceNames& names) {
-    std::smatch match;
+    smatch match;
 
     if(!std::regex_match(text, match, pattern.expression)) {
-        return std::nullopt;
+        return nullopt;
     }
 
     const auto captured = captureSlots(rule, pattern, match);
     const auto entity =
-        captured ? names.resolve(captured->value("device", string()), rule.domain) : std::nullopt;
+        captured ? names.resolve(captured->value("device", string()), rule.domain) : nullopt;
 
     if(!entity) {
-        return std::nullopt;
+        return nullopt;
     }
 
     // A relative rule with a spoken amount ("up by ten") carries it for the executor to resolve.
@@ -138,7 +141,7 @@ optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const s
     }
 
     const auto data = fillTemplate(rule.body, *captured);
-    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data}) : std::nullopt;
+    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data}) : nullopt;
 }
 } // namespace
 
@@ -158,13 +161,13 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
     static const regex negationOrSequence(R"(\b(?:not|never|dont|don't|then|but)\b)");
 
     if(text.empty() || text.size() > 512 || std::regex_search(text, negativeNumber)) {
-        return std::nullopt;
+        return nullopt;
     }
 
     const string normalized = Grammar::normalizeText(text);
 
     if(std::regex_search(normalized, negationOrSequence)) {
-        return std::nullopt;
+        return nullopt;
     }
 
     const string request = stripPoliteness(normalized);
@@ -187,7 +190,7 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
             }
 
             if(chosen && *chosen != *proposal) {
-                return std::nullopt;
+                return nullopt;
             }
 
             chosen = std::move(proposal);

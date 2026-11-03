@@ -18,6 +18,10 @@
 using Commands::Command;
 using Commands::Context;
 using Commands::json;
+using httplib::Request;
+using httplib::Response;
+using std::atomic;
+using std::mutex;
 using std::string;
 
 /**
@@ -38,19 +42,19 @@ int main() {
                           {"state", "heat_cool"},
                           {"attributes", {{"supported_features", 385}, {"friendly_name", "AC TV & Rump"}}}}};
     httplib::Server server;
-    std::atomic<int> posts{0};
-    std::atomic<int> mode{0};
+    atomic<int> posts{0};
+    atomic<int> mode{0};
     json received;
-    std::mutex receivedMutex;
+    mutex receivedMutex;
     /*
      * @brief Copy of the latest service body the mock server accepted.
      */
     const auto lastReceived = [&] {
-        std::lock_guard<std::mutex> lock(receivedMutex);
+        std::lock_guard<mutex> lock(receivedMutex);
         return received;
     };
     // Mode 1 reports a louder speaker, so relative volume must use fresh state.
-    server.Get("/api/states", [&](const httplib::Request& request, httplib::Response& response) {
+    server.Get("/api/states", [&](const Request& request, Response& response) {
         if(request.get_header_value("Authorization") != "Bearer test-token") {
             response.status = 401;
             return;
@@ -62,7 +66,7 @@ int main() {
     });
     // Real service definitions, minus media_pause so a missing service can be tested; counts fetches to check caching.
     auto advertised = readFixture("services.json");
-    std::atomic<int> serviceFetches{0};
+    atomic<int> serviceFetches{0};
 
     for(auto& group : advertised) {
         if(group["domain"] == "media_player") {
@@ -70,13 +74,13 @@ int main() {
         }
     }
 
-    server.Get("/api/services", [&](const httplib::Request&, httplib::Response& response) {
+    server.Get("/api/services", [&](const Request&, Response& response) {
         ++serviceFetches;
         response.set_content(advertised.dump(), "application/json");
     });
     // Mode 2 simulates a server error after the request is received.
     server.Post("/api/services/media_player/volume_set",
-                [&](const httplib::Request& request, httplib::Response& response) {
+                [&](const Request& request, Response& response) {
                     if(request.get_header_value("Authorization") != "Bearer test-token" ||
                        request.get_header_value("Content-Type") != "application/json") {
                         response.status = 400;
@@ -86,7 +90,7 @@ int main() {
                     ++posts;
 
                     {
-                        std::lock_guard<std::mutex> lock(receivedMutex);
+                        std::lock_guard<mutex> lock(receivedMutex);
                         received = json::parse(request.body);
                     }
 
@@ -94,7 +98,7 @@ int main() {
                     response.set_content("[]", "application/json");
                 });
     // Any other POST is unexpected and must fail the POST-count checks.
-    server.Post(".*", [&](const httplib::Request&, httplib::Response& response) {
+    server.Post(".*", [&](const Request&, Response& response) {
         ++posts;
         response.set_content("{}", "application/json");
     });
@@ -112,7 +116,7 @@ int main() {
     try {
         HomeAssistant client(url, "test-token");
         client.configure(configuration);
-        Commands::Executor& executor = client;
+        Executor& executor = client;
         const Context context{executor.discoverDevices(), executor.discoverServices()};
         check(context.devices.size() == 3, "discovery returns every controllable entity");
         check(context.services.count("media_player") && context.services.count("climate"), "discovery returns the advertised services");

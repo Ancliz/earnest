@@ -11,6 +11,7 @@
 
 using Audio::sampleRate;
 using Audio::Samples;
+using std::nullopt;
 using std::optional;
 
 namespace {
@@ -71,7 +72,7 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
             trailingSilentBlocks = 0;
         }
 
-        return std::nullopt;
+        return nullopt;
     }
 
     if(audio.empty() && !speech) {
@@ -81,7 +82,7 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
             preroll.pop_front();
         }
 
-        return std::nullopt;
+        return nullopt;
     }
 
     // Speech starts: prepend the quiet lead-in so the first syllable is not clipped.
@@ -107,5 +108,5 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
         discardUntilSilence = true;
     }
 
-    return std::nullopt;
+    return nullopt;
 }

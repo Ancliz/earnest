@@ -11,6 +11,8 @@
 #include <string>
 #include <thread>
 
+using std::string;
+
 /**
  * @brief What the application does after startup.
  */
@@ -41,7 +43,7 @@ enum class ParserKind {
  * @brief The parser named "ollama" or "regex".
  * @throws std::runtime_error For any other name.
  */
-ParserKind parserKind(const std::string& name);
+ParserKind parserKind(const string& name);
 
 /**
  * @brief Options parsed from the command line.
@@ -55,10 +57,10 @@ struct Settings {
     std::optional<ParserKind> parser;
 
     /// Ollama model given with --ollama-model; empty defers to OLLAMA_MODEL.
-    std::string ollamaModel;
+    string ollamaModel;
 
     /// Whisper GGML model path.
-    std::string model = "models/ggml-base.en.bin";
+    string model = "models/ggml-base.en.bin";
 
     /// Transcription threads, 1..256.
     int threads = static_cast<int>(std::max(1u, std::min(4u, std::thread::hardware_concurrency())));
@@ -73,22 +75,22 @@ struct Settings {
     bool gpu = true;
 
     /// Phrase, alias and policy file.
-    std::string phraseFile = Config::defaultPhraseFile;
+    string phraseFile = Config::defaultPhraseFile;
 
     /// Installation file of aliases, voice scope and AC policy, merged over the phrase file.
-    std::string homeFile = Config::defaultHomeFile;
+    string homeFile = Config::defaultHomeFile;
     
     /// Text given to --parse.
-    std::string parseText;
+    string parseText;
 
     /// Phrase that must open each spoken command; empty accepts every utterance.
-    std::string wakeWord;
+    string wakeWord;
 
     /// Lowest log level shown, as named by spdlog.
-    std::string logLevel = "info";
+    string logLevel = "info";
 
     /// Log file appended to alongside the console; empty for console only.
-    std::string logFile;
+    string logFile;
 };
 
 /**
@@ -104,19 +106,19 @@ Settings parseArguments(int argc, char* argv[]);
 struct ConnectionSettings {
 
     /// Home Assistant origin including scheme and port (HOME_ASSISTANT_URL).
-    std::string url = "http://homeassistant.local:8123";
+    string url = "http://homeassistant.local:8123";
 
     /// Long-lived access token (HOME_ASSISTANT_TOKEN); empty when not configured.
-    std::string token;
+    string token;
 
     /// Ollama origin including scheme and port (OLLAMA_URL).
-    std::string ollamaUrl = "http://localhost:11434";
+    string ollamaUrl = "http://localhost:11434";
 
     /// Installed Ollama model name and tag (OLLAMA_MODEL).
-    std::string ollamaModel = "qwen3.5:4b";
+    string ollamaModel = "qwen3.5:4b";
 
     /// Parser used when --parser is not given (PARSER): "ollama" or "regex".
-    std::string parser = "ollama";
+    string parser = "ollama";
 };
 
 /**
@@ -127,9 +129,9 @@ struct ConnectionSettings {
  *
  * @throws std::runtime_error For a non-comment line without "=".
  */
-ConnectionSettings readConnectionSettings(const std::string& path = ".env");
+ConnectionSettings readConnectionSettings(const string& path = ".env");
 
 /**
  * @brief Log the supported command-line syntax.
  */
-void printUsage(const std::string& executable);
+void printUsage(const string& executable);

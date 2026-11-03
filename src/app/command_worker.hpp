@@ -16,6 +16,9 @@
 #include <string>
 #include <thread>
 
+using Audio::Samples;
+using std::string;
+
 /**
  * @brief Log the command parsed from the text, or that none was recognized.
  *
@@ -56,10 +59,10 @@ class CommandWorker {
     Config::Configuration& configuration;
 
     /// Phrase that must open each command; empty accepts every utterance.
-    std::string wakeWord;
+    string wakeWord;
 
     /// Last reload error reported, so a broken file is reported once rather than on every check.
-    std::string lastReloadError;
+    string lastReloadError;
 
     /// Guards pending and stopping.
     std::mutex queueMutex;
@@ -68,7 +71,7 @@ class CommandWorker {
     std::condition_variable ready;
 
     /// Submitted utterances not yet handled.
-    std::deque<Audio::Samples> pending;
+    std::deque<Samples> pending;
 
     /// Set by the destructor; the thread finishes the queue and returns.
     bool stopping = false;
@@ -89,7 +92,7 @@ class CommandWorker {
     /**
      * @brief Transcribe one utterance, check the wake word, then parse and execute its command.
      */
-    void handle(Audio::Samples utterance);
+    void handle(Samples utterance);
 
 public:
     /**
@@ -97,7 +100,7 @@ public:
      * @throws std::system_error If the thread cannot start.
      */
     CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                  Config::Configuration& configuration, std::string wakeWord);
+                  Config::Configuration& configuration, string wakeWord);
 
     /**
      * @brief Finish every submitted utterance, then stop the thread.
@@ -117,5 +120,5 @@ public:
     /**
      * @brief Queue an utterance for handling without waiting for it.
      */
-    void submit(Audio::Samples utterance);
+    void submit(Samples utterance);
 };

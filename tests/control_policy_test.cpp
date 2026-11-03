@@ -138,7 +138,7 @@ int main() {
           "voice cannot change MyZone");
 
     // Commands that never came from the regex parser must be rejected on their own merits.
-    for(const auto& command : std::vector<Command>{
+    for(const auto& command : vector<Command>{
             {"fan", "set_percentage", "fan.office", json::object()},
             {"fan", "media_pause", "fan.office", json::object()},
             {"media_player", "set_temperature", "media_player.kitchen", {{"temperature", 22}}},

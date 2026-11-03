@@ -11,6 +11,8 @@
 #include <stdexcept>
 #include <vector>
 
+using std::make_shared;
+
 void setupLogging(const std::string& level, const std::string& file) {
     const auto threshold = spdlog::level::from_str(level);
 
@@ -19,17 +21,17 @@ void setupLogging(const std::string& level, const std::string& file) {
         throw std::runtime_error("Unknown log level: " + level);
     }
 
-    auto console = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    auto console = make_shared<spdlog::sinks::stderr_color_sink_mt>();
     console->set_pattern("[%H:%M:%S] [%^%l%$] %v");
     std::vector<spdlog::sink_ptr> sinks{console};
 
     if(!file.empty()) {
-        auto disk = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file);
+        auto disk = make_shared<spdlog::sinks::basic_file_sink_mt>(file);
         disk->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
         sinks.push_back(disk);
     }
 
-    auto logger = std::make_shared<spdlog::logger>("smarthome", sinks.begin(), sinks.end());
+    auto logger = make_shared<spdlog::logger>("smarthome", sinks.begin(), sinks.end());
     logger->set_level(threshold);
     logger->flush_on(spdlog::level::warn);
     spdlog::set_default_logger(logger);

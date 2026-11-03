@@ -36,5 +36,5 @@ public:
     /**
      * @brief Ask the model for the single command the text requests.
      */
-    std::optional<Command> parse(const std::string& text, const Context& context) override;
+    std::optional<Command> parse(const string& text, const Context& context) override;
 };

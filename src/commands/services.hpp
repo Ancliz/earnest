@@ -13,6 +13,9 @@
 namespace Commands {
 
 using json = nlohmann::json;
+using std::map;
+using std::set;
+using std::string;
 
 /**
  * @brief The data fields one service accepts.
@@ -20,25 +23,25 @@ using json = nlohmann::json;
 struct ServiceFields {
 
     /// Every field the service accepts besides entity_id.
-    std::set<std::string> allowed;
+    set<string> allowed;
 
     /// Fields that must be present.
-    std::set<std::string> required;
+    set<string> required;
 
     /// Selector describing each field's values, such as {"number": {"min": 0, "max": 1}} or {"boolean": {}}.
-    std::map<std::string, json> selectors;
+    map<string, json> selectors;
 };
 
 /**
  * @brief Services by domain, then by service name.
  */
-using ServiceCatalogue = std::map<std::string, std::map<std::string, ServiceFields>>;
+using ServiceCatalogue = map<string, map<string, ServiceFields>>;
 
 /**
  * @brief Look up the fields of domain.service.
  * @return Catalogue entry, or nullptr when commands may not name that service.
  */
-inline const ServiceFields* findService(const ServiceCatalogue& services, const std::string& domain, const std::string& service) {
+inline const ServiceFields* findService(const ServiceCatalogue& services, const string& domain, const string& service) {
     const auto group = services.find(domain);
 
     if(group == services.end()) {

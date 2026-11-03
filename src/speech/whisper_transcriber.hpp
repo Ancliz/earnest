@@ -11,6 +11,8 @@
 #include <vector>
 #include <whisper.h>
 
+using std::string;
+
 /**
  * @brief Transcribes utterances with a local Whisper GGML model.
  */
@@ -23,7 +25,7 @@ class WhisperTranscriber final : public Speech::Transcriber {
     whisper_full_params parameters;
 
     /// Initial prompt text; parameters.initial_prompt points into it.
-    std::string prompt;
+    string prompt;
 
 public:
     /**
@@ -34,7 +36,7 @@ public:
      * @throws std::invalid_argument For an empty path or invalid thread count.
      * @throws std::runtime_error If the model cannot be loaded.
      */
-    WhisperTranscriber(const std::string& model, int threads, bool gpu);
+    WhisperTranscriber(const string& model, int threads, bool gpu);
 
     /**
      * @brief Transcribe one utterance, padding it to Whisper's one-second minimum.
@@ -43,7 +45,7 @@ public:
      * rather than a guessed vocabulary word.
      * @throws std::runtime_error If inference fails.
      */
-    std::string transcribe(Audio::Samples utterance) override;
+    string transcribe(Audio::Samples utterance) override;
 
     /**
      * @brief Bias recognition towards words that commands use, such as device names.
@@ -52,5 +54,5 @@ public:
      * ("Q990" over "queue"). Words placed here can be dropped from the start of a transcript as
      * if already said, so never include a wake word. An empty list clears the bias.
      */
-    void setVocabulary(const std::vector<std::string>& words);
+    void setVocabulary(const std::vector<string>& words);
 };

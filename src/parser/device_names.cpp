@@ -12,6 +12,8 @@
 #include <vector>
 
 namespace Grammar {
+using std::min;
+using std::nullopt;
 using std::optional;
 using std::size_t;
 
@@ -33,8 +35,8 @@ size_t editDistance(const string& a, const string& b, size_t limit) {
 
         for(size_t j = 1; j <= b.size(); ++j) {
             current[j] =
-                std::min({previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] != b[j - 1])});
-            rowBest = std::min(rowBest, current[j]);
+                min({previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] != b[j - 1])});
+            rowBest = min(rowBest, current[j]);
         }
 
         if(rowBest > limit) {
@@ -87,7 +89,7 @@ optional<string> DeviceNames::resolve(const string& spoken, const string& domain
             return defaultDevice;
         }
 
-        return domain == "media_player" ? optional<string>("") : std::nullopt;
+        return domain == "media_player" ? optional<string>("") : nullopt;
     }
 
     // Joining words suggest the capture spans more than one device or command.
@@ -95,7 +97,7 @@ optional<string> DeviceNames::resolve(const string& spoken, const string& domain
     const auto names = domains.find(domain);
 
     if(std::regex_search(name, compound) || name.size() > 160 || names == domains.end()) {
-        return std::nullopt;
+        return nullopt;
     }
 
     size_t bestEdits = std::numeric_limits<size_t>::max();
@@ -105,7 +107,7 @@ optional<string> DeviceNames::resolve(const string& spoken, const string& domain
     // The closest name within the edit budget (1, or 2 for names of 8+ characters) wins; a tie
     // between different entities is ambiguous.
     for(const auto& [alias, entity] : names->second) {
-        const size_t limit = std::min(name.size(), alias.size()) >= 8 ? 2 : 1;
+        const size_t limit = min(name.size(), alias.size()) >= 8 ? 2 : 1;
         const size_t edits = alias == name               ? 0
                              : fuzzy && name.size() >= 4 ? editDistance(name, alias, limit)
                                                          : limit + 1;
@@ -125,7 +127,7 @@ optional<string> DeviceNames::resolve(const string& spoken, const string& domain
 
     // An empty entity covers both "no match" and a blocked name.
     if(ambiguous || bestEntity.empty()) {
-        return std::nullopt;
+        return nullopt;
     }
 
     return bestEntity;

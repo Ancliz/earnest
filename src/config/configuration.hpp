@@ -23,6 +23,7 @@ namespace Config {
     
 /// JSON value type produced by YAML decoding.
 using json = nlohmann::json;
+using std::string;
 
 /**
  * @brief Phrase file used when --phrases is not given.
@@ -43,13 +44,13 @@ constexpr const char* defaultHomeFile = SMARTHOME_HOME_FILE;
  *
  * @throws std::runtime_error For invalid YAML or exceeded limits.
  */
-json readYaml(const std::string& text);
+json readYaml(const string& text);
 
 /**
  * @brief Read a file and decode it with readYaml().
  * @throws std::runtime_error If the file cannot be read or decoded.
  */
-json readYamlFile(const std::string& path);
+json readYamlFile(const string& path);
 
 /**
  * @brief Overlay an installation file on the phrase file: objects merge, lists append, and other
@@ -63,13 +64,17 @@ json mergeConfiguration(json base, const json& overlay);
  */
 class Configuration {
     /// Phrase file read on construction and on each reload.
-    std::string path;
+    string path;
+
     /// Installation file merged over it; empty or missing for none.
-    std::string homePath;
+    string homePath;
+
     /// Texts of the last load attempt, whether applied or rejected.
-    std::string lastText;
+    string lastText;
+
     /// Configuration currently applied to every consumer.
     json active;
+    
     /// Configures every consumer; throws to reject a candidate.
     std::function<void(const json&)> apply;
 
@@ -77,12 +82,12 @@ class Configuration {
      * @brief Decode and apply text, returning consumers to the active configuration on rejection.
      * @throws std::exception If the text cannot be decoded or a consumer rejects it.
      */
-    void load(const std::string& text);
+    void load(const string& text);
 
     /**
      * @brief Both files' texts, joined so a change to either is seen; a missing home file is empty.
      */
-    std::string readTexts() const;
+    string readTexts() const;
 
 public:
     /**
@@ -92,7 +97,7 @@ public:
      * @param[in] homePath Installation file merged over the phrase file, if it exists.
      * @throws std::exception If a file cannot be read, decoded, or applied.
      */
-    Configuration(std::string path, std::function<void(const json&)> apply, std::string homePath = "");
+    Configuration(string path, std::function<void(const json&)> apply, string homePath = "");
 
     /**
      * @brief Apply the file again if its text changed since the last attempt.

@@ -14,9 +14,10 @@
 using Commands::Command;
 using Commands::Device;
 using Commands::Devices;
+using Commands::findService;
 using Commands::json;
 using Commands::ServiceCatalogue;
-using Commands::findService;
+using std::isfinite;
 using std::runtime_error;
 using std::string;
 using std::vector;
@@ -109,7 +110,7 @@ string resolveRelativeVolume(Command& command, const Devices& devices) {
     const double change = amount.get<double>();
     const Device* speaker = findDevice(devices, command.entity);
 
-    if(!std::isfinite(change) || change < 0 || change > 1 || !speaker) {
+    if(!isfinite(change) || change < 0 || change > 1 || !speaker) {
         return "Cannot resolve relative-volume command";
     }
 
@@ -121,7 +122,7 @@ string resolveRelativeVolume(Command& command, const Devices& devices) {
 
     const double level = current.get<double>();
 
-    if(!std::isfinite(level) || level < 0 || level > 1) {
+    if(!isfinite(level) || level < 0 || level > 1) {
         return "Current volume is invalid";
     }
 
@@ -138,7 +139,7 @@ string resolveRelativeVolume(Command& command, const Devices& devices) {
  * the device instead, as the service's own range is far wider than any device's.
  * @return Rejection reason, or empty when the fields are acceptable.
  */
-string checkFields(const Command& command, const Commands::ServiceFields& fields) {
+string checkFields(const Command& command, const ServiceFields& fields) {
     for(const auto& field : command.data.items()) {
         if(!fields.allowed.count(field.key())) {
             return "Unexpected service field: " + field.key();
@@ -162,7 +163,7 @@ string checkFields(const Command& command, const Commands::ServiceFields& fields
             return "Expected true or false: " + field;
         } else if(!selector.contains("number")) {
             continue;
-        } else if(!value.is_number() || !std::isfinite(value.get<double>())) {
+        } else if(!value.is_number() || !isfinite(value.get<double>())) {
             return "Invalid numeric field: " + field;
         }
 
@@ -210,7 +211,7 @@ string checkClimate(const Command& command, const json& attributes) {
         const double step = attributes.value("target_temp_step", 1.0);
         const double steps = (value - min) / step;
 
-        if(!std::isfinite(min) || !std::isfinite(max) || !std::isfinite(step) || min > max || value < min ||
+        if(!isfinite(min) || !isfinite(max) || !isfinite(step) || min > max || value < min ||
            value > max || step <= 0 || std::abs(steps - std::round(steps)) > 1e-6) {
             return "Temperature is outside the device range or step";
         }
@@ -393,7 +394,7 @@ AirflowPolicy readAirflowPolicy(const json& configuration) {
     }
 
     AirflowPolicy policy;
-    std::set<string> entities;
+    set<string> entities;
 
     for(const auto& entry : section["systems"]) {
         const bool complete = entry.is_object() && entry.value("entity", json()).is_string() &&
@@ -441,7 +442,7 @@ AirflowPolicy readAirflowPolicy(const json& configuration) {
     return policy;
 }
 
-Commands::Result validateCommand(Command command, const Devices& devices, const ServiceCatalogue& services, const AirflowPolicy& policy) {
+Result validateCommand(Command command, const Devices& devices, const ServiceCatalogue& services, const AirflowPolicy& policy) {
     try {
         string problem = resolveRelativeVolume(command, devices);
 

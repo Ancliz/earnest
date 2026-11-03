@@ -7,6 +7,8 @@
 
 #include "phrase_rules.hpp"
 
+using Commands::json;
+
 /**
  * @brief Parses text with the phrase file's ordered rules and resolves device names itself.
  */
@@ -16,7 +18,7 @@ class RegexParser final : public Commands::Parser {
     std::vector<Grammar::Rule> rules;
     
     /// Configured spoken names by entity ID.
-    Commands::json aliases = Commands::json::object();
+    json aliases = Commands::json::object();
 
 public:
     /**
@@ -28,12 +30,12 @@ public:
      * @brief Construct and configure a parser.
      * @throws std::exception If the configuration is invalid.
      */
-    explicit RegexParser(const Commands::json& configuration);
+    explicit RegexParser(const json& configuration);
 
     /**
      * @brief Compile the configuration's rules and aliases, replacing the active ones only on success.
      */
-    void configure(const Commands::json& configuration) override;
+    void configure(const json& configuration) override;
 
     /**
      * @brief Match normalized text against every rule.

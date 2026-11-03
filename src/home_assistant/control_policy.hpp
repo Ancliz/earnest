@@ -9,34 +9,35 @@
 #include <vector>
 
 using namespace Commands;
+using std::vector;
 
 /**
  * @brief One ducted AdvantageAir system as verified on site (see docs/advantage_air.md).
  */
 struct AirflowSystem {
     /// Main climate entity that runs the compressor.
-    std::string entity;
+    string entity;
 
     /// MyZone select entity, which voice must never change; empty when not configured.
-    std::string myZoneEntity;
+    string myZoneEntity;
 
     /// Every zone's climate entity.
-    std::vector<std::string> zones;
+    vector<string> zones;
 
     /// Zones the installer requires open whenever the system runs.
-    std::vector<std::string> constantZones;
+    vector<string> constantZones;
 
     /// Fewest zones that may be open while the system runs.
     unsigned minimumOpenZones = 1;
     
     /// Preset under which the constant-zone policy was verified.
-    std::string verifiedPreset;
+    string verifiedPreset;
 };
 
 /**
  * @brief Every verified system; climate and damper commands outside them are rejected.
  */
-using AirflowPolicy = std::vector<AirflowSystem>;
+using AirflowPolicy = vector<AirflowSystem>;
 
 /**
  * @brief Read the advantage_air section of a configuration.

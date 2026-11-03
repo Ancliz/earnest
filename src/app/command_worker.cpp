@@ -49,7 +49,7 @@ CommandWorker::~CommandWorker() {
     thread.join();
 }
 
-void CommandWorker::submit(Audio::Samples utterance) {
+void CommandWorker::submit(Samples utterance) {
     {
         lock_guard<mutex> lock(queueMutex);
 
@@ -108,7 +108,7 @@ void CommandWorker::reloadConfiguration() {
     }
 }
 
-void CommandWorker::handle(Audio::Samples utterance) {
+void CommandWorker::handle(Samples utterance) {
     const string heard = transcriber.transcribe(std::move(utterance));
 
     if(heard.find_first_not_of(" \t\r\n") == string::npos) {

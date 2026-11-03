@@ -22,10 +22,13 @@ using Commands::Device;
 using Grammar::normalizeName;
 using nlohmann::json;
 using nlohmann::ordered_json;
+using std::nullopt;
+using std::regex;
+using std::regex_search;
 using std::runtime_error;
-using std::string;
 using std::set;
 using std::size_t;
+using std::string;
 using std::vector;
 
 namespace {
@@ -214,7 +217,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
     const auto request = tidy(text);
 
     if(request.empty()) {
-        return std::nullopt;
+        return nullopt;
     }
 
     json devices = json::array();
@@ -268,14 +271,14 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
         if(command.domain.empty() || !fields) {
-            return std::nullopt;
+            return nullopt;
         }
 
         const auto unbacked = checkHeard(normalizeName(content.at("heard").get<string>()), request, command.entity, context);
 
         if(!unbacked.empty()) {
             spdlog::warn("Rejecting model's device choice: {}", unbacked);
-            return std::nullopt;
+            return nullopt;
         }
 
         if(command.data.is_null()) {
@@ -293,12 +296,12 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         }
 
         // Small models pick volume_set for "turn it up 3"; a direction without "to" is a relative change.
-        const std::regex direction("\\b(up|down|louder|quieter|softer|raise|lower)\\b");
+        const regex direction("\\b(up|down|louder|quieter|softer|raise|lower)\\b");
         const auto normalized = Grammar::normalizeText(request);
-        const bool relative = std::regex_search(normalized, direction) && !std::regex_search(normalized, std::regex("\\bto\\b"));
+        const bool relative = regex_search(normalized, direction) && !regex_search(normalized, regex("\\bto\\b"));
 
         if(command.domain == "media_player" && relative && command.service.rfind("volume_", 0) == 0) {
-            const bool down = std::regex_search(normalized, std::regex("\\b(down|quieter|softer|lower)\\b"));
+            const bool down = regex_search(normalized, regex("\\b(down|quieter|softer|lower)\\b"));
             const json level = command.data.value("volume_level", command.data.value("amount", json()));
             command.service = down ? "volume_down" : "volume_up";
             command.data = level.is_number() ? json{{"amount", level}} : json::object();
@@ -311,7 +314,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             }
 
             const auto percent = command.data[field].get<double>();
-            const std::regex digits("\\b\\d+(\\.\\d+)?\\b"); // Standalone, so "Q990" is not a number
+            const regex digits("\\b\\d+(\\.\\d+)?\\b"); // Standalone, so "Q990" is not a number
             bool spoken = true;
 
             // Numbers transcribed as digits must be copied exactly; small models "correct" 300 to 30.
@@ -326,7 +329,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
             if(!spoken) {
                 spdlog::warn("Rejecting {} {}: not a number in the request", field, percent);
-                return std::nullopt;
+                return nullopt;
             }
 
             command.data[field] = percent / 100;
@@ -335,6 +338,6 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         return command;
     } catch(const std::exception& error) {
         spdlog::error("Ollama parse failed: {}", error.what());
-        return std::nullopt;
+        return nullopt;
     }
 }

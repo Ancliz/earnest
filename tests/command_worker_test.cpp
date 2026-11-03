@@ -18,6 +18,7 @@ using Commands::Command;
 using Commands::Context;
 using Commands::json;
 using Commands::Result;
+using std::chrono::milliseconds;
 using std::string;
 using std::vector;
 
@@ -51,7 +52,7 @@ public:
         started = true;
 
         while(holdFirst && index == 0 && !released) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(milliseconds(5));
         }
 
         if(texts.at(index) == "throw") {
@@ -165,7 +166,7 @@ int main() {
         worker.submit(utterance(0));
 
         while(!transcriber.started) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(milliseconds(1));
         }
 
         const auto before = std::chrono::steady_clock::now();
@@ -174,7 +175,7 @@ int main() {
             worker.submit(utterance(i));
         }
 
-        check(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(50), "submit does not wait for a running command");
+        check(std::chrono::steady_clock::now() - before < milliseconds(50), "submit does not wait for a running command");
         transcriber.released = true;
     }
 
