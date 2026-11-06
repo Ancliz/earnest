@@ -28,8 +28,7 @@ namespace {
  * @throws std::runtime_error For unknown or repeated slots and malformed optional sections.
  */
 string translatePhrase(const string& phrase, std::map<string, int>& slots) {
-    static const set<string> allowedSlots = {"device",      "volume", "percent",
-                                                  "temperature", "mode",   "option"};
+    static const set<string> allowedSlots = {"device", "volume", "percent", "temperature", "mode", "option", "song"};
     string result;
 
     for(size_t i = 0; i < phrase.size(); ++i) {

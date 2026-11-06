@@ -15,9 +15,15 @@ rebuild is needed. A malformed or invalid replacement keeps the previous configu
 first load must succeed. These are local, trusted files: they define what you authorise the
 application to send.
 
-The default parser, `OllamaParser`, needs neither phrase rules nor aliases: the model
-matches what was said against the discovered device names and services. `rules` and
-`aliases` drive `RegexParser`, the deterministic alternative selected with `--parser regex`.
+Three parsers are available with `--parser` or `PARSER`:
+
+- `hybrid` (default): the phrase rules first, so the phrasings they list always resolve the
+  same way, then the Ollama model for anything no rule decides, including ambiguous text.
+- `regex`: the phrase rules only; needs no model server.
+- `ollama`: the model only. It matches what was said against the discovered devices,
+  their aliases and each service's description.
+
+Both parsers use `aliases`; only the rules use `rules`.
 `voice_control` and `advantage_air` work the same whichever parser you choose. The parser only
 proposes a command; the Home Assistant executor then checks it against the voice scope and
 the AC airflow policy, if one is configured, before sending anything, so neither parser can
@@ -25,7 +31,7 @@ get around them.
 
 ## Add a phrase
 
-Phrase rules are read by `RegexParser`.
+Phrase rules are read by `RegexParser`, and by the hybrid parser before it asks the model.
 
 Find a rule with the intended domain/service, then add to `phrases`:
 
@@ -50,6 +56,10 @@ Syntax:
 - `{temperature}`: numeric degrees, including spoken numbers; unit limits and steps
   are checked against live HA attributes before sending.
 - `{mode}` / `{option}`: a string. An optional `values` map converts synonyms.
+- `{song}`: free text, such as a song title and artist.
+
+A rule whose service acts on no device, such as Spotify's `get_queue` or `request_song`,
+needs no `{device}`; the command's entity is empty.
 
 `body` contains service fields, not `entity_id`; the parser supplies the resolved
 ID. A placeholder must occupy the whole field value, so numeric captures stay
@@ -113,7 +123,8 @@ const auto preview = executor->preview(*command);
 `Commands::Parser` defines `configure(configuration)` and `parse(text, context)`,
 returning at most one `Commands::Command`. `RegexParser` compiles rules once and does
 no file or network access; `configure` commits only after every rule compiles.
-`OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface.
+`OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface, and
+`FallbackParser` (`src/app/fallback_parser.hpp`) chains two parsers for the hybrid mode.
 
 `Config::Configuration` performs file reads and reloads. `reloadIfChanged()` returns
 true when changed text is applied and throws when it is rejected; every consumer then

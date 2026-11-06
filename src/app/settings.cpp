@@ -53,11 +53,15 @@ string trimWhitespace(const string& text) {
 } // namespace
 
 ParserKind parserKind(const string& name) {
-    if(name != "ollama" && name != "regex") {
-        throw runtime_error("Parser must be ollama or regex, not \"" + name + "\"");
+    if(name == "hybrid") {
+        return ParserKind::Hybrid;
+    } else if(name == "ollama") {
+        return ParserKind::Ollama;
+    } else if(name == "regex") {
+        return ParserKind::Regex;
     }
 
-    return name == "regex" ? ParserKind::Regex : ParserKind::Ollama;
+    throw runtime_error("Parser must be hybrid, ollama or regex, not \"" + name + "\"");
 }
 
 Settings parseArguments(int argc, char* argv[]) {
@@ -193,7 +197,7 @@ ConnectionSettings readConnectionSettings(const string& path) {
 }
 
 void printUsage(const string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser ollama|regex] [--ollama-model NAME] [--phrases FILE] [--home FILE] "
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

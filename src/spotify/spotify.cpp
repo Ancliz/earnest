@@ -97,9 +97,16 @@ Devices Spotify::discoverDevices() {
 
 ServiceCatalogue Spotify::discoverServices() {
     const json text = {{"text", json::object()}};
-    const ServiceFields song{{"song"}, {"song"}, {{"song", text}}, false};
+    // Descriptions carry the phrasings, so a parser can tell these from Home Assistant's play and switch.
+    const ServiceFields cast{{}, {}, {}, true, "Move music playback to a speaker: \"cast to\", \"switch to\", \"play on\", \"move the music to\", "
+                                               "\"playback on\". The speaker is the device."};
+    const ServiceFields queue{{}, {}, {}, false, "Say what is playing and queued: \"what's in the queue\", \"what's next\"."};
+    const ServiceFields request{{"song"}, {"song"}, {{"song", text}}, false, "Queue a song: \"play <song>\", \"add <song> to the queue\", "
+                                                                            "\"queue <song>\". song is the title and artist as said."};
+    const ServiceFields wait{{"song"}, {"song"}, {{"song", text}}, false, "How long until a queued song plays: \"time until <song>\", "
+                                                                         "\"when is <song> playing\", \"how long until <song>\". song is the title as said."};
 
-    return {{"spotify", {{"cast", {}}, {"get_queue", {{}, {}, {}, false}}, {"request_song", song}, {"time_until", song}}}};
+    return {{"spotify", {{"cast", cast}, {"get_queue", queue}, {"request_song", request}, {"time_until", wait}}}};
 }
 
 Result Spotify::preview(const Command& command) {

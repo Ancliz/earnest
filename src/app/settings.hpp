@@ -36,11 +36,13 @@ enum class ParserKind {
     /// An Ollama language model.
     Ollama,
     /// Phrase rules from the configuration files; needs no model server.
-    Regex
+    Regex,
+    /// Phrase rules first, and the Ollama model for text no rule decides.
+    Hybrid
 };
 
 /**
- * @brief The parser named "ollama" or "regex".
+ * @brief The parser named "hybrid", "ollama" or "regex".
  * @throws std::runtime_error For any other name.
  */
 ParserKind parserKind(const string& name);
@@ -120,8 +122,8 @@ struct ConnectionSettings {
     /// Spotify control server origin (SPOTIFY_URL); empty leaves Spotify commands out.
     string spotifyUrl;
 
-    /// Parser used when --parser is not given (PARSER): "ollama" or "regex".
-    string parser = "ollama";
+    /// Parser used when --parser is not given (PARSER): "hybrid", "ollama" or "regex".
+    string parser = "hybrid";
 };
 
 /**

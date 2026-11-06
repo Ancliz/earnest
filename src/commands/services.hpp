@@ -33,6 +33,9 @@ struct ServiceFields {
 
     /// Whether the service acts on a device; false for requests such as reading a music queue.
     bool targetsEntity = true;
+
+    /// What the service does and how people ask for it, for parsers that read it; may be empty.
+    string description;
 };
 
 /**

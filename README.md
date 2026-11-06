@@ -6,9 +6,10 @@ Say the wake word, ask for what you want ("turn the lounge speaker up a bit", "s
 twenty two") and it takes care of it. Speech is heard by [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
 understood by a local [Ollama](https://ollama.com) model, and carried out through
 [Home Assistant](https://www.home-assistant.io). Everything runs on your own machines: no cloud
-account, no audio leaving the network. If you'd rather not run a language model, or are unable to, a
-lightweight regex parser driven by editable phrase rules can understand commands instead
-(set `PARSER=regex` in `.env`, or run with `--parser regex`).
+account, no audio leaving the network. Editable phrase rules handle the phrasings they list
+exactly, and the model handles the rest. If you'd rather not run a language model, or are
+unable to, the phrase rules can work alone (set `PARSER=regex` in `.env`, or run with
+`--parser regex`).
 
 It learns your home rather than the other way round. Devices and the functionalities they have are
 discovered from Home Assistant, so a new speaker or light is ready to talk to as soon as Home
@@ -63,7 +64,7 @@ models.
 
 1. Copy `.env.example` to `.env` and set `HOME_ASSISTANT_TOKEN`. The same file sets the Home
    Assistant and Ollama addresses and the Ollama model; it overrides environment variables, and command-line options override both.
-2. Optionally copy `config/home.example.yaml` to `config/home.yaml` for your own aliases (if using `RegexParser` parser), voice
+2. Optionally copy `config/home.example.yaml` to `config/home.yaml` for your own aliases, voice
    scope and zoned-AC policy. Both files are ignored by git.
 
 ### Run

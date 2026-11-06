@@ -246,7 +246,8 @@ rules:
 - id: media-media-play-28
   domain: media_player
   service: media_play
-  regex: '(?:play|resume|unpause|continue)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
+  # "play ... on <speaker>" moves Spotify playback instead (spotify-cast), so these take only in/for.
+  regex: '(?:play|resume|unpause|continue)(?: (?:the )?(?:music|audio|playback))?(?: (?:in |for )?(?!on )(.+))?'
   device_group: 1
   body: {}
 - id: media-media-pause-29
@@ -457,3 +458,41 @@ rules:
   - (set|change) [the] {device} speed to {percent}
   body:
     percentage: '{percent}'
+# Spotify, through the Spotify control server (SPOTIFY_URL). Playback and volume stay with
+# Home Assistant's media players above; these rules match nothing unless Spotify is configured.
+- id: spotify-cast
+  domain: spotify
+  service: cast
+  phrases:
+  - (cast|switch|move|transfer|send|put) [the] [(music|playback|song|spotify)] (to|on|onto) [the] {device}
+  - play [the] [(music|spotify)] (on|through) [the] {device}
+  - '[start] (playback|playing) (on|through) [the] {device}'
+  body: {}
+- id: spotify-queue
+  domain: spotify
+  service: get_queue
+  phrases:
+  - (what's|what is) (in|on) the queue
+  - (what's|what is) (playing|coming|up) next
+  - (what's|what is) next
+  - (what's|what is) queued [up]
+  - (show|read|tell) [me] the queue
+  body: {}
+- id: spotify-time-until
+  domain: spotify
+  service: time_until
+  phrases:
+  - time (until|till|before) {song}
+  - how long (until|till|before) {song} [(plays|is playing|is on|comes on|starts)]
+  - (when is|when's|when will) {song} (playing|play|be playing|on|be on|coming on|come on)
+  body:
+    song: '{song}'
+- id: spotify-request
+  domain: spotify
+  service: request_song
+  phrases:
+  - add {song} to [the] queue
+  - (add|queue up|queue|request) {song}
+  - play {song}
+  body:
+    song: '{song}'

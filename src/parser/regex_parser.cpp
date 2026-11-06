@@ -83,7 +83,8 @@ optional<json> captureSlots(const Rule& rule, const Pattern& pattern, const smat
             captured[slot] = *number;
             captured["value"] = *number;
         } else {
-            captured[slot] = rule.values.value(spoken, spoken);
+            const auto word = Grammar::trim(spoken);
+            captured[slot] = rule.values.value(word, word);
         }
     }
 
@@ -116,11 +117,12 @@ optional<json> fillTemplate(const json& body, const json& captured) {
 
 /**
  * @brief Build the command one pattern produces for normalized text.
+ * @param[in] deviceless Whether the rule's service acts on no device, so no device is resolved.
  * @return Command, or nullopt when the pattern does not match, a value is invalid, or the device
  *         cannot be resolved.
  */
 optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const string& text,
-                               const Grammar::DeviceNames& names) {
+                               const Grammar::DeviceNames& names, bool deviceless) {
     smatch match;
 
     if(!std::regex_match(text, match, pattern.expression)) {
@@ -128,8 +130,8 @@ optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const s
     }
 
     const auto captured = captureSlots(rule, pattern, match);
-    const auto entity =
-        captured ? names.resolve(captured->value("device", string()), rule.domain) : nullopt;
+    // A service that acts on no device, such as reading a queue, has no entity to resolve.
+    const auto entity = !captured ? nullopt : deviceless ? optional<string>("") : names.resolve(captured->value("device", string()), rule.domain);
 
     if(!entity) {
         return nullopt;
@@ -182,8 +184,11 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
             continue;
         }
 
+        const auto* fields = Commands::findService(context.services, rule.domain, rule.service);
+        const bool deviceless = fields && !fields->targetsEntity;
+
         for(const auto& pattern : rule.patterns) {
-            auto proposal = matchPattern(rule, pattern, request, names);
+            auto proposal = matchPattern(rule, pattern, request, names, deviceless);
 
             if(!proposal) {
                 continue;

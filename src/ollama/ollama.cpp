@@ -55,12 +55,12 @@ ordered_json commandFormat(const set<string>& domains, const set<string>& servic
 
     return ordered_json{{"type", "object"},
                         {"properties",
-                         {{"heard", {{"type", "string"}}},
-                          {"entity", oneOf(entities)},
-                          {"domain", oneOf(domains)},
+                         {{"domain", oneOf(domains)},
                           {"service", oneOf(services)},
+                          {"heard", {{"type", "string"}}},
+                          {"entity", oneOf(entities)},
                           {"data", {{"type", "object"}}}}},
-                        {"required", {"heard", "entity", "domain", "service", "data"}}};
+                        {"required", {"domain", "service", "heard", "entity", "data"}}};
 }
 
 /**
@@ -75,10 +75,12 @@ string tidy(const string& text) {
 
 /// Worked examples; small models follow these more reliably than rules alone.
 const char* const examples =
-    "Examples, using illustrative devices: \"turn on the kitchen speaker\" -> {\"heard\": \"kitchen speaker\", "
-    "\"entity\": \"media_player.kitchen\", \"domain\": \"media_player\", \"service\": \"turn_on\", \"data\": {}}; "
-    "\"set the desk ramp to forty percent\" -> {\"heard\": \"desk ramp\", \"entity\": \"light.desk_lamp\", "
-    "\"domain\": \"light\", \"service\": \"turn_on\", \"data\": {\"brightness_pct\": 40}}. ";
+    "Examples, using illustrative devices: \"turn on the kitchen speaker\" -> {\"domain\": \"media_player\", "
+    "\"service\": \"turn_on\", \"heard\": \"kitchen speaker\", \"entity\": \"media_player.kitchen\", \"data\": {}}; "
+    "\"play the kitchen speaker\" -> {\"domain\": \"media_player\", \"service\": \"media_play\", \"heard\": \"kitchen "
+    "speaker\", \"entity\": \"media_player.kitchen\", \"data\": {}}; \"set the desk ramp to forty percent\" -> "
+    "{\"domain\": \"light\", \"service\": \"turn_on\", \"heard\": \"desk ramp\", \"entity\": \"light.desk_lamp\", "
+    "\"data\": {\"brightness_pct\": 40}}. ";
 
 /**
  * @brief Words of a name, normalized; underscores count as spaces so entity IDs split too.
@@ -110,13 +112,19 @@ bool soundsLike(const string& heard, const string& name) {
 }
 
 /**
- * @brief How many heard words match a word of the device's friendly name or object ID.
+ * @brief How many heard words match a word of the device's friendly name, object ID or aliases.
  */
-size_t nameScore(const vector<string>& heard, const Device& device) {
-    static const set<string> fillers = {"the", "and", "of", "to", "in"};
+size_t nameScore(const vector<string>& heard, const Device& device, const json& aliases) {
+    static const set<string> fillers = {"the", "and", "of", "to", "in", "my"};
     auto names = words(device.name);
     const auto objectId = words(device.entityId.substr(device.entityId.find('.') + 1));
     names.insert(names.end(), objectId.begin(), objectId.end());
+
+    for(const auto& alias : aliases.value(device.entityId, json::array())) {
+        const auto aliasWords = words(alias.get<string>());
+        names.insert(names.end(), aliasWords.begin(), aliasWords.end());
+    }
+
     size_t score = 0;
 
     for(const auto& word : heard) {
@@ -131,38 +139,52 @@ size_t nameScore(const vector<string>& heard, const Device& device) {
 }
 
 /**
- * @brief Why the model's device choice is not backed by the request, or "" when it is.
+ * @brief Point the command at the device the request names, or say why it names none.
  *
- * The heard words must occur in the request, at least one must sound like the chosen device's
- * name, and no other device may match more of them. A request naming no device may only target
- * the context's default device.
+ * The heard words must occur in the request. The model chooses the domain and service well but
+ * often the wrong device within it, so the device of that domain matching the most heard words
+ * replaces the model's choice; a tie between two such devices is ambiguous. A device of another
+ * domain matching more of the words means the model chose the wrong domain. A request naming no
+ * device may only target the context's default device.
+ *
+ * @return Why no device is backed by the request, or "" once command.entity names one.
  */
-string checkHeard(const string& heard, const string& request, const string& entity, const Context& context) {
+string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const json& aliases) {
     if(heard.empty()) {
-        return !context.defaultDevice.empty() && entity == context.defaultDevice ? "" : "no device named";
+        return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "no device named";
     } else if(Grammar::normalizeText(request).find(heard) == string::npos) {
         return "\"" + heard + "\" is not in the request";
     }
 
-    const auto chosen = std::find_if(context.devices.begin(), context.devices.end(),
-                                     [&](const Device& device) { return device.entityId == entity; });
-
-    if(chosen == context.devices.end()) {
-        return "unknown entity " + entity;
-    }
-
     const auto heardWords = words(heard);
-    const auto score = nameScore(heardWords, *chosen);
+    vector<const Device*> best;
+    size_t bestScore = 0;
+    size_t otherScore = 0;
 
-    if(score == 0) {
-        return "\"" + heard + "\" does not sound like " + chosen->name;
+    for(const auto& device : context.devices) {
+        const auto score = nameScore(heardWords, device, aliases);
+
+        if(device.domain != command.domain) {
+            otherScore = std::max(otherScore, score);
+        } else if(score > bestScore) {
+            best = {&device};
+            bestScore = score;
+        } else if(score == bestScore) {
+            best.push_back(&device);
+        }
     }
 
-    // A device matching more of the heard words means the model picked the wrong one.
-    for(const auto& device : context.devices) {
-        if(nameScore(heardWords, device) > score) {
-            return "\"" + heard + "\" sounds more like " + device.name + " than " + chosen->name;
-        }
+    const auto chosen = std::find_if(best.begin(), best.end(), [&](const Device* device) { return device->entityId == command.entity; });
+
+    if(bestScore == 0) {
+        return "\"" + heard + "\" does not sound like any " + command.domain + " device";
+    } else if(otherScore > bestScore) {
+        return "\"" + heard + "\" sounds more like a device outside " + command.domain;
+    } else if(chosen == best.end() && best.size() > 1) {
+        return "\"" + heard + "\" matches more than one " + command.domain + " device";
+    } else if(chosen == best.end()) {
+        spdlog::debug("Correcting the model's device {} to {}", command.entity, best[0]->entityId);
+        command.entity = best[0]->entityId;
     }
 
     return "";
@@ -211,7 +233,21 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
     return reply;
 }
 
-void OllamaParser::configure(const json&) {}
+void OllamaParser::configure(const json& configuration) {
+    const auto configured = configuration.value("aliases", json::object());
+
+    if(!configured.is_object()) {
+        throw runtime_error("aliases must map entity IDs to lists of spoken names");
+    }
+
+    for(const auto& [entity, names] : configured.items()) {
+        if(!names.is_array() || !std::all_of(names.begin(), names.end(), [](const json& name) { return name.is_string(); })) {
+            throw runtime_error("aliases for " + entity + " must be a list of names");
+        }
+    }
+
+    aliases = configured;
+}
 
 std::optional<Command> OllamaParser::parse(const string& text, const Context& context) {
     const auto request = tidy(text);
@@ -227,8 +263,12 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
     // Offer only devices whose domain the catalogue can command.
     for(const auto& device : context.devices) {
         if(context.services.count(device.domain)) {
-            devices.push_back(
-                {{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
+            devices.push_back({{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
+            
+            if(aliases.contains(device.entityId)) {
+                devices.back()["aliases"] = aliases[device.entityId];
+            }
+            
             domains.insert(device.domain);
             entities.insert(device.entityId);
         }
@@ -254,19 +294,23 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             if(!fields.targetsEntity) {
                 services[domain][service]["device"] = false;
             }
+
+            if(!fields.description.empty()) {
+                services[domain][service]["description"] = fields.description;
+            }
             serviceNames.insert(service);
         }
     }
 
     const json messages = {
         {{"role", "system"},
-         {"content", "Turn the user's request into one Home Assistant command. "
-                     "Set heard to the exact words of the request that name the device, and entity to "
-                     "the device whose name sounds most like them; speech is often misheard, so pick "
-                     "the closest device rather than giving up. Set domain to that "
-                     "device's domain. Set service to one of that domain's services: \"turn on\" and "
+         {"content", "Turn the user's request into one command. "
+                     "First choose the domain and one of its services for what is asked. Then set heard to the "
+                     "exact words of the request that name the device, and entity to that domain's device whose "
+                     "name or alias sounds most like them; speech is often misheard, so pick the closest device "
+                     "rather than giving up. \"turn on\" and "
                      "\"turn off\" mean turn_on and turn_off, while play and pause mean media_play and "
-                     "media_pause. data holds only the service's allowed fields; never put the device, "
+                     "media_pause, so \"play\" followed by a device's name plays that device rather than a song. data holds only the service's allowed fields; never put the device, "
                      "entity, domain or service in data, and use {} when the service needs no fields. "
                      "volume_level is the spoken volume as a percentage: copy the number said, so "
                      "\"volume to 3\" is 3 and \"twenty percent\" is 20. \"Up\" or \"down\" without \"to\" "
@@ -274,7 +318,8 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
                      "A service marked \"device\": false acts on no device, so heard and entity are \"\". " +
                          string(examples) +
                          "Services with their allowed and required data fields: " + services.dump() +
-                         ". Devices: " + devices.dump() + ". If the request is not a device command, return empty strings."}},
+                         ". Devices: " + devices.dump() + ". A service's description says how people ask for it; prefer the service whose description "
+                         "matches the wording. If no service fits the request, return empty strings."}},
         {{"role", "user"}, {"content", request}}};
 
     try {
@@ -288,7 +333,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             return nullopt;
         }
 
-        const auto unbacked = fields->targetsEntity ? checkHeard(normalizeName(content.at("heard").get<string>()), request, command.entity, context) : "";
+        const auto unbacked = fields->targetsEntity ? groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, aliases) : "";
 
         if(!fields->targetsEntity) {
             command.entity = "";

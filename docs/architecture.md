@@ -26,7 +26,7 @@ implementations.
 | Interface | Methods | Current implementation |
 | --- | --- | --- |
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
-| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `OllamaParser`, or `RegexParser` with `--parser regex` |
+| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
 A `Commands::Command` is `{domain, service, entity, data}`. The services a command may
@@ -46,7 +46,8 @@ domain; an executor that cannot be reached is skipped in discovery with a warnin
 `get_queue`, `request_song` and `time_until` (both with a `song` field). Play, pause and
 volume stay with Home Assistant. Services that act on no device have
 `ServiceFields::targetsEntity` false, and answers such as the queue come back in
-`Result::reply`.
+`Result::reply`. Each service's `ServiceFields::description` lists how people ask for it, which
+the Ollama prompt includes, and the shared phrase file has matching `spotify-*` rules.
 
 ## Service discovery
 
@@ -83,7 +84,7 @@ integration needs no configuration here:
 `Config::Configuration` reads `config/phrases.yaml`, merges the installation's
 `config/home.yaml` over it when present, and passes the result to every consumer
 through one callback: the executor reads `advantage_air` and `voice_control`, and
-`RegexParser` reads `rules` and `aliases` (`OllamaParser` needs neither). When an edit is rejected, the previous configuration is applied again,
+`RegexParser` reads `rules` and `aliases`, and `OllamaParser` reads `aliases`. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
 ## Side effects

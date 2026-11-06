@@ -22,6 +22,9 @@ class OllamaParser final : public Commands::Parser {
     /// Connection to the model server.
     OllamaClient client;
 
+    /// Extra spoken names for entities, from the configuration's aliases.
+    json aliases = json::object();
+
 public:
     /**
      * @brief Configure the Ollama server and model without making a request.

@@ -61,6 +61,7 @@ int main() {
     check(parse({"earnest"}).mode == Mode::Listen, "listening is the default mode");
     check(parse({"earnest", "--help"}).mode == Mode::Help, "help");
     check(!parse({"earnest"}).parser && parse({"earnest", "--parser", "regex"}).parser == ParserKind::Regex, "the parser is selectable");
+    check(parserKind("hybrid") == ParserKind::Hybrid && ConnectionSettings().parser == "hybrid", "hybrid is a parser and the default");
     checkThrows([] { parse({"earnest", "--parser", "gpt"}); }, "an unknown parser is rejected");
     check(parse({"earnest", "--ollama-model", "llama3.2:3b"}).ollamaModel == "llama3.2:3b", "the Ollama model is selectable");
     const auto preview = parse({"earnest", "--parse", "pause kitchen", "--cpu", "model.bin"});

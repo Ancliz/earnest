@@ -6,6 +6,7 @@
 #include "settings.hpp"
 #include "command_worker.hpp"
 #include "executor_router.hpp"
+#include "fallback_parser.hpp"
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
@@ -118,13 +119,11 @@ int main(int argc, char* argv[]) {
         }
 
         const auto connection = readConnectionSettings();
-        unique_ptr<Parser> parser;
-
-        if((settings.parser ? *settings.parser : parserKind(connection.parser)) == ParserKind::Regex) {
-            parser = make_unique<RegexParser>();
-        } else {
-            parser = make_unique<OllamaParser>(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
-        }
+        const auto kind = settings.parser ? *settings.parser : parserKind(connection.parser);
+        RegexParser rules;
+        OllamaParser model(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
+        FallbackParser hybrid(rules, model);
+        Parser& parser = kind == ParserKind::Regex ? static_cast<Parser&>(rules) : kind == ParserKind::Ollama ? static_cast<Parser&>(model) : hybrid;
 
         HomeAssistant homeAssistant(connection.url, connection.token);
         Spotify spotify(connection.spotifyUrl);
@@ -133,7 +132,7 @@ int main(int argc, char* argv[]) {
         unique_ptr<Executor> executor = make_unique<ExecutorRouter>(executors);
         Configuration configuration(settings.phraseFile, [&](const json& candidate) {
             executor->configure(candidate);
-            parser->configure(candidate);
+            parser.configure(candidate);
         }, settings.homeFile);
 
         if(settings.mode == Mode::CheckPhrases) {
@@ -151,7 +150,7 @@ int main(int argc, char* argv[]) {
         }
 
         if(settings.mode == Mode::Parse) {
-            return previewText(settings.parseText, *parser, *executor) ? 0 : 1;
+            return previewText(settings.parseText, parser, *executor) ? 0 : 1;
         }
 
         auto whisper = make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
@@ -165,7 +164,7 @@ int main(int argc, char* argv[]) {
         whisper->setVocabulary(deviceNames);
         unique_ptr<Transcriber> transcriber = std::move(whisper);
 
-        listen(settings, *transcriber, *parser, *executor, configuration);
+        listen(settings, *transcriber, parser, *executor, configuration);
         
     } catch(const std::exception& error) {
         spdlog::error(error.what());

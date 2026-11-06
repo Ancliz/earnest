@@ -5,10 +5,12 @@
 
 #include "check.hpp"
 #include "fixtures.hpp"
+#include "app/fallback_parser.hpp"
 #include "config/configuration.hpp"
 #include "parser/device_names.hpp"
 #include "parser/regex_parser.hpp"
 #include "parser/speech_text.hpp"
+#include "spotify/spotify.hpp"
 
 #include <iostream>
 
@@ -122,7 +124,7 @@ int main() {
                 {{"is_volume_muted", false}});
     expectMedia(parser, "kitchen mute", "volume_mute", kitchen, {{"is_volume_muted", true}});
     expectMedia(parser, "mute", "volume_mute", fallback, {{"is_volume_muted", true}});
-    expectMedia(parser, "play the music on the kitchen", "media_play", kitchen);
+    expectMedia(parser, "play the music in the kitchen", "media_play", kitchen); // "play ... on" is a Spotify cast
     expectMedia(parser, "resume kitchen", "media_play", kitchen);
     expectMedia(parser, "pause", "media_pause", fallback);
     expectMedia(parser, "pause music in kitchen", "media_pause", kitchen);
@@ -216,6 +218,49 @@ int main() {
     for(const auto* speech : {" Pause.", "Play", " Hey Jarvis", "AC", "Um, turn on the light", "oh pause it", "Home", "Hold"}) {
         check(!isNonSpeech(speech), string("speech: ") + speech);
     }
+
+    // Spotify phrasings: each family resolves to one service, and device-less services take no device.
+    const Context music{{device("spotify.speaker", "Q990B"), device("spotify.phone", "SM-S928B"), device("media_player.q990", "Q990B")},
+                        Spotify("http://127.0.0.1:1").discoverServices()};
+    const Command cast{"spotify", "cast", "spotify.speaker", json::object()};
+
+    for(const auto* text : {"cast to the q990b", "switch to the q990b", "play music on the q990b", "move the music to the q990b",
+                            "playback on the q990b", "start playback on the q990b", "transfer playback to the q990b"}) {
+        check(parser.parse(text, music) == cast, string("cast: ") + text);
+    }
+
+    const Command wait{"spotify", "time_until", "", {{"song", "bohemian rhapsody"}}};
+
+    for(const auto* text : {"time until bohemian rhapsody", "time till bohemian rhapsody", "when is bohemian rhapsody playing",
+                            "when's bohemian rhapsody on", "how long until bohemian rhapsody", "how long before bohemian rhapsody comes on"}) {
+        check(parser.parse(text, music) == wait, string("time until: ") + text);
+    }
+
+    const Command request{"spotify", "request_song", "", {{"song", "wonderwall"}}};
+
+    for(const auto* text : {"add wonderwall to the queue", "add wonderwall to queue", "add wonderwall", "queue up wonderwall", "play wonderwall"}) {
+        check(parser.parse(text, music) == request, string("request: ") + text);
+    }
+
+    for(const auto* text : {"what's in the queue", "what's next", "what's playing next", "show me the queue"}) {
+        check(parser.parse(text, music) == Command{"spotify", "get_queue", "", json::object()}, string("queue: ") + text);
+    }
+
+    check(parser.parse("pause the q990b", music) == Command{"media_player", "media_pause", "media_player.q990", json::object()},
+          "playback controls stay with Home Assistant");
+    check(!parser.parse("play the q990b", music), "playing a speaker that shares a name with a song request is left to a fallback");
+    check(!parser.parse("add wonderwall", Context{music.devices}), "Spotify phrases match nothing without the Spotify catalogue");
+
+    /*
+     * @brief A parser that always proposes the same command, standing in for a language model.
+     */
+    struct Fixed final : Commands::Parser {
+        void configure(const json&) override {}
+        std::optional<Command> parse(const string&, const Context&) override { return Command{"media_player", "media_play", "media_player.q990", json::object()}; }
+    } model;
+    FallbackParser hybrid(parser, model);
+    check(hybrid.parse("add wonderwall", music) == request, "the hybrid parser prefers phrase rules");
+    check(hybrid.parse("play the q990b", music)->service == "media_play", "the hybrid parser falls back when no rule decides");
 
     std::cout << checks << " parser checks passed\n";
 }
