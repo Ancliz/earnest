@@ -146,7 +146,8 @@ ConnectionSettings readConnectionSettings(const string& path) {
     std::ifstream input(path);
     ConnectionSettings settings;
     const std::pair<const char*, string*> keys[] = {{"HOME_ASSISTANT_URL", &settings.url}, {"HOME_ASSISTANT_TOKEN", &settings.token},
-                                                    {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}, {"PARSER", &settings.parser}};
+                                                    {"OLLAMA_URL", &settings.ollamaUrl}, {"OLLAMA_MODEL", &settings.ollamaModel}, {"PARSER", &settings.parser},
+                                                    {"SPOTIFY_URL", &settings.spotifyUrl}};
     string line;
 
     // The environment is the general fallback; this installation's file overrides it.

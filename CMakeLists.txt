@@ -43,23 +43,29 @@ target_include_directories(audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_library(app-settings src/app/settings.cpp src/app/logging.cpp)
 target_link_libraries(app-settings PUBLIC configuration spdlog::spdlog)
 
+add_library(spotify-executor src/spotify/spotify.cpp)
+target_link_libraries(spotify-executor PUBLIC commands Threads::Threads)
+
+add_library(executor-router src/app/executor_router.cpp)
+target_link_libraries(executor-router PUBLIC commands spdlog::spdlog)
+
 add_library(command-worker src/app/command_worker.cpp)
 target_link_libraries(command-worker PUBLIC commands configuration regex-parser audio spdlog::spdlog Threads::Threads)
 
-foreach(target configuration regex-parser home-assistant audio app-settings command-worker)
+foreach(target configuration regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 
 if(BUILD_TESTING)
-    foreach(name parser control_policy configuration home_assistant utterance_buffer settings command_worker)
+    foreach(name parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
         add_executable(${name}_test tests/${name}_test.cpp)
         target_compile_options(${name}_test PRIVATE -Wall -Wextra -Wpedantic)
-        target_link_libraries(${name}_test PRIVATE regex-parser home-assistant configuration audio app-settings command-worker)
+        target_link_libraries(${name}_test PRIVATE regex-parser home-assistant spotify-executor executor-router configuration audio app-settings command-worker)
         target_compile_definitions(${name}_test PRIVATE SMARTHOME_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
         add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
 
-    set_tests_properties(home_assistant PROPERTIES TIMEOUT 20)
+    set_tests_properties(home_assistant spotify PROPERTIES TIMEOUT 20)
 endif()
 
 option(SMARTHOME_BUILD_VOICE "Build the Whisper microphone application" ON)
@@ -75,6 +81,6 @@ if(SMARTHOME_BUILD_VOICE)
     FetchContent_MakeAvailable(whisper)
     add_executable(earnest src/app/main.cpp src/audio/microphone.cpp src/speech/whisper_transcriber.cpp)
     target_compile_options(earnest PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(earnest PRIVATE regex-parser ollama-parser home-assistant audio app-settings command-worker
+    target_link_libraries(earnest PRIVATE regex-parser ollama-parser home-assistant spotify-executor executor-router audio app-settings command-worker
         whisper PkgConfig::PORTAUDIO Threads::Threads)
 endif()

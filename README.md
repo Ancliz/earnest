@@ -110,6 +110,10 @@ and its fields must exist, numbers must be in range, and a zoned AC system must 
 airflow (see [the AdvantageAir notes](docs/advantage_air.md)). Relative volume ("up by 5", or
 just "up", which moves 2%) is calculated from the current level.
 
+With a Spotify control server running, set `SPOTIFY_URL` in `.env` to cast playback to a Spotify
+Connect device, hear what's queued, request a song, or ask how long until a song plays. Playback
+and volume stay with Home Assistant.
+
 ## Tests
 
 To build the libraries and tests without Whisper or PortAudio:
@@ -140,6 +144,7 @@ Every class, type, function and method has a Doxygen comment. With Doxygen insta
 - `src/audio/`: microphone capture and utterance buffering.
 - `src/speech/`: the transcriber interface and Whisper implementation.
 - `src/ollama/`: the Ollama client and LLM parser.
+- `src/spotify/`: the Spotify executor, a client of the Spotify control server.
 - `src/parser/`: the regex parser, phrase rules, spoken numbers, wake word and name matching.
 - `src/commands/`: the shared command, device and service-catalogue types and interfaces.
 - `src/home_assistant/`: the Home Assistant executor, discovery and control policy.

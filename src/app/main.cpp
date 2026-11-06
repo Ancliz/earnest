@@ -5,6 +5,7 @@
 
 #include "settings.hpp"
 #include "command_worker.hpp"
+#include "executor_router.hpp"
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"
@@ -12,6 +13,7 @@
 #include "parser/regex_parser.hpp"
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
+#include "spotify/spotify.hpp"
 
 #include <csignal>
 #include <spdlog/spdlog.h>
@@ -124,7 +126,11 @@ int main(int argc, char* argv[]) {
             parser = make_unique<OllamaParser>(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel);
         }
 
-        unique_ptr<Executor> executor = make_unique<HomeAssistant>(connection.url, connection.token);
+        HomeAssistant homeAssistant(connection.url, connection.token);
+        Spotify spotify(connection.spotifyUrl);
+        // Spotify owns only its own domain; everything else, playback controls included, is Home Assistant's.
+        auto executors = connection.spotifyUrl.empty() ? std::vector<Executor*>{&homeAssistant} : std::vector<Executor*>{&spotify, &homeAssistant};
+        unique_ptr<Executor> executor = make_unique<ExecutorRouter>(executors);
         Configuration configuration(settings.phraseFile, [&](const json& candidate) {
             executor->configure(candidate);
             parser->configure(candidate);

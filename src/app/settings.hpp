@@ -117,6 +117,9 @@ struct ConnectionSettings {
     /// Installed Ollama model name and tag (OLLAMA_MODEL).
     string ollamaModel = "qwen3.5:4b";
 
+    /// Spotify control server origin (SPOTIFY_URL); empty leaves Spotify commands out.
+    string spotifyUrl;
+
     /// Parser used when --parser is not given (PARSER): "ollama" or "regex".
     string parser = "ollama";
 };

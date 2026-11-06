@@ -27,12 +27,26 @@ implementations.
 | --- | --- | --- |
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
 | `Commands::Parser` | `configure(config)`, `parse(text, context)` | `OllamaParser`, or `RegexParser` with `--parser regex` |
-| `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `HomeAssistant` |
+| `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
 A `Commands::Command` is `{domain, service, entity, data}`. The services a command may
 name, and their fields, form a `Commands::ServiceCatalogue` (`src/commands/services.hpp`).
 Nothing is hard-coded: the executor discovers the catalogue, and parsers receive it in
 `Context::services` alongside the devices.
+
+## Several executors
+
+`ExecutorRouter` combines executors into one, so parsers see a single set of devices and
+services. Each domain belongs to the first executor that offers it, and commands are routed by
+domain; an executor that cannot be reached is skipped in discovery with a warning.
+
+`Spotify` (`src/spotify/`) owns the `spotify` domain and talks to the Spotify control server
+(`SPOTIFY_URL`), never to Spotify directly. It adds what Home Assistant's media players lack:
+`cast` (move playback to a Spotify Connect device, discovered as `spotify.<device id>`),
+`get_queue`, `request_song` and `time_until` (both with a `song` field). Play, pause and
+volume stay with Home Assistant. Services that act on no device have
+`ServiceFields::targetsEntity` false, and answers such as the queue come back in
+`Result::reply`.
 
 ## Service discovery
 
