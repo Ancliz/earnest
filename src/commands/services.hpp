@@ -30,6 +30,9 @@ struct ServiceFields {
 
     /// Selector describing each field's values, such as {"number": {"min": 0, "max": 1}} or {"boolean": {}}.
     map<string, json> selectors;
+
+    /// Whether the service acts on a device; false for requests such as reading a music queue.
+    bool targetsEntity = true;
 };
 
 /**

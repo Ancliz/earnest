@@ -31,6 +31,10 @@ bool logResult(const Commands::Result& result, bool preview) {
         spdlog::info("Command sent");
     }
 
+    if(!result.reply.empty()) {
+        spdlog::info("Reply: {}", result.reply);
+    }
+
     return result.success;
 }
 

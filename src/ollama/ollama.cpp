@@ -234,6 +234,15 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         }
     }
 
+    // A domain with services that need no device, such as reading a music queue, is offered regardless.
+    for(const auto& [domain, domainServices] : context.services) {
+        for(const auto& entry : domainServices) {
+            if(!entry.second.targetsEntity) {
+                domains.insert(domain);
+            }
+        }
+    }
+
     // Describe each offered domain's services by their allowed and required data fields.
     json services = json::object();
     set<string> serviceNames;
@@ -241,6 +250,10 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
     for(const auto& domain : domains) {
         for(const auto& [service, fields] : context.services.at(domain)) {
             services[domain][service] = {{"allowed", fields.allowed}, {"required", fields.required}};
+
+            if(!fields.targetsEntity) {
+                services[domain][service]["device"] = false;
+            }
             serviceNames.insert(service);
         }
     }
@@ -257,7 +270,8 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
                      "entity, domain or service in data, and use {} when the service needs no fields. "
                      "volume_level is the spoken volume as a percentage: copy the number said, so "
                      "\"volume to 3\" is 3 and \"twenty percent\" is 20. \"Up\" or \"down\" without \"to\" "
-                     "means volume_up or volume_down, with the number said as amount, or {} when none is said. " +
+                     "means volume_up or volume_down, with the number said as amount, or {} when none is said. "
+                     "A service marked \"device\": false acts on no device, so heard and entity are \"\". " +
                          string(examples) +
                          "Services with their allowed and required data fields: " + services.dump() +
                          ". Devices: " + devices.dump() + ". If the request is not a device command, return empty strings."}},
@@ -274,9 +288,11 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             return nullopt;
         }
 
-        const auto unbacked = checkHeard(normalizeName(content.at("heard").get<string>()), request, command.entity, context);
+        const auto unbacked = fields->targetsEntity ? checkHeard(normalizeName(content.at("heard").get<string>()), request, command.entity, context) : "";
 
-        if(!unbacked.empty()) {
+        if(!fields->targetsEntity) {
+            command.entity = "";
+        } else if(!unbacked.empty()) {
             spdlog::warn("Rejecting model's device choice: {}", unbacked);
             return nullopt;
         }

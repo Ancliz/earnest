@@ -116,6 +116,9 @@ struct Result {
 
     /// The command as it would be or was sent, after internal resolution such as relative volume.
     Command command;
+
+    /// Answer to a request for information, such as what is queued; empty when there is none.
+    string reply = "";
 };
 
 /**
