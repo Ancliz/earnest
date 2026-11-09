@@ -5,6 +5,7 @@ capture thread:  Microphone → UtteranceBuffer → CommandWorker::submit
 worker thread:   Speech::Transcriber → text → wake-word and non-speech filters
 text + executor->discoverDevices() + discoverServices() → Commands::Parser → Commands::Command
 Commands::Command → Commands::Executor → preview (read-only) or execute (one POST)
+Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesiser → Audio::Player
 ```
 
 ## Threads
@@ -20,12 +21,14 @@ Commands::Command → Commands::Executor → preview (read-only) or execute (one
   every queued utterance before returning.
 
 Each stage knows the others only through the types in `src/commands/command.hpp` and
-`src/speech/transcriber.hpp`. `src/app/main.cpp` is the only place that names concrete
+`src/speech/`'s `transcriber.hpp` and `synthesiser.hpp`. `src/app/main.cpp` is the only place that names concrete
 implementations.
 
 | Interface | Methods | Current implementation |
 | --- | --- | --- |
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
+| `Speech::Synthesiser` | `generate(text)` | `ChatterboxSynthesiser` (`CHATTERBOX_URL`, `CHATTERBOX_VOICE`) |
+| `Audio::Player` | `play(buffer)` | `PortAudioPlayer` |
 | `Commands::Parser` | `configure(config)`, `parse(text, context)` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
@@ -77,6 +80,8 @@ integration needs no configuration here:
 - **Executor:** derive from `Commands::Executor`. `discoverDevices()` and
   `discoverServices()` supply what parsers may target, and `execute()` must validate
   commands itself rather than trusting the parser.
+- **Synthesiser:** derive from `Speech::Synthesiser` and construct it in `main.cpp` instead of
+  `ChatterboxSynthesiser`. It returns a `Buffer` at any sample rate.
 - **Transcriber:** derive from `Speech::Transcriber` and construct it in `main.cpp` instead
   of `WhisperTranscriber`. It receives mono float samples at `Audio::sampleRate`.
 
@@ -93,6 +98,8 @@ so the parser and executor never disagree.
 - Parsing, `validateCommand`, and `controllableDevices` are pure.
 - `discoverDevices()`, `discoverServices()` and `preview()` make read-only HTTP requests.
 - Only `execute()` changes device state: one POST, never retried.
+- After `execute()`, the worker says the outcome, which blocks it until playback ends. A speech
+  failure is logged and never affects the command, which has already run.
 - Constructors acquire resources: the microphone starts capture and Whisper loads its
   model. No constructor contacts Home Assistant.
 

@@ -127,7 +127,7 @@ Samples utterance(size_t index) { return Samples{static_cast<float>(index)}; }
 /**
  * @brief Produces no audio, so the worker needs no speech server.
  */
-class SilentEngine final : public tts::Engine {
+class SilentSynthesiser final : public Speech::Synthesiser {
 public:
     Audio::Buffer generate(std::string_view) override { return {{}, 16000, 1}; }
 };
@@ -150,11 +150,12 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
     RecordingExecutor executor;
     Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
 
-    SilentEngine engine;
+    SilentSynthesiser synthesiser;
     SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
 
     {
-        CommandWorker worker(transcriber, parser, executor, configuration, engine, player, wakeWord);
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, wakeWord);
 
         for(size_t i = 0; i < texts.size(); ++i) {
             worker.submit(utterance(i));
@@ -190,11 +191,12 @@ int main() {
     RecordingExecutor executor;
     Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
 
-    SilentEngine engine;
+    SilentSynthesiser synthesiser;
     SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
 
     {
-        CommandWorker worker(transcriber, parser, executor, configuration, engine, player, "");
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "");
         worker.submit(utterance(0));
 
         while(!transcriber.started) {

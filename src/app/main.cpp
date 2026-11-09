@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Composition root: selects the transcriber, parser and executor and runs the chosen mode.
+ * @brief Composition root: selects the transcriber, synthesiser, parser and executor and runs the chosen mode.
  */
 
 #include "settings.hpp"
@@ -15,7 +15,7 @@
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 #include "spotify/spotify.hpp"
-#include "tts/chatterbox.hpp"
+#include "speech/chatterbox_synthesiser.hpp"
 #include "audio/portaudio_player.hpp"
 
 #include <csignal>
@@ -69,16 +69,15 @@ bool previewText(const string& text, Parser& parser, Executor& executor) {
  * This thread only captures and segments audio, so speech is still heard while a command runs.
  * A stop request still executes speech that is already buffered or queued.
  */
-void listen(const Settings& settings, const ConnectionSettings& connection, Transcriber& transcriber, Parser& parser,
+void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesiser& synthesiser, Parser& parser,
             Executor& executor, Configuration& configuration) {
     std::signal(SIGINT, requestStop);
     std::signal(SIGTERM, requestStop);
     Microphone microphone;
     UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
-    tts::ChatterboxClient chatterbox(connection.chatterboxUrl, connection.chatterboxVoice);
-    Audio::PortAudioPlayer player{};
-
-    CommandWorker worker(transcriber, parser, executor, configuration, chatterbox, player, settings.wakeWord);
+    Audio::PortAudioPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+    CommandWorker worker(transcriber, parser, executor, configuration, speech, settings.wakeWord);
     Samples block;
     spdlog::info("Listening. Press Ctrl+C to stop.");
 
@@ -169,7 +168,8 @@ int main(int argc, char* argv[]) {
         whisper->setVocabulary(deviceNames);
         unique_ptr<Transcriber> transcriber = std::move(whisper);
 
-        listen(settings, connection, *transcriber, parser, *executor, configuration);
+        Speech::ChatterboxSynthesiser synthesiser(connection.chatterboxUrl, connection.chatterboxVoice);
+        listen(settings, *transcriber, synthesiser, parser, *executor, configuration);
         
     } catch(const std::exception& error) {
         spdlog::error(error.what());

@@ -37,7 +37,7 @@ target_link_libraries(home-assistant PUBLIC commands Threads::Threads)
 add_library(ollama-parser src/ollama/ollama.cpp src/ollama/ollama_parser.cpp)
 target_link_libraries(ollama-parser PUBLIC commands regex-parser spdlog::spdlog Threads::Threads)
 
-add_library(audio src/audio/utterance_buffer.cpp src/audio/audio.cpp)
+add_library(audio src/audio/utterance_buffer.cpp)
 target_include_directories(audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 add_library(app-settings src/app/settings.cpp src/app/logging.cpp)
@@ -49,7 +49,7 @@ target_link_libraries(spotify-executor PUBLIC commands spdlog::spdlog Threads::T
 add_library(executor-router src/commands/executor_router.cpp)
 target_link_libraries(executor-router PUBLIC commands spdlog::spdlog)
 
-add_library(command-worker src/app/command_worker.cpp)
+add_library(command-worker src/app/command_worker.cpp src/speech/synthesiser.cpp)
 target_link_libraries(command-worker PUBLIC commands configuration regex-parser audio spdlog::spdlog Threads::Threads)
 
 foreach(target configuration regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
@@ -79,7 +79,7 @@ if(SMARTHOME_BUILD_VOICE)
         GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
         GIT_TAG 4979e04f5dcaccb36057e059bbaed8a2f5288315) # v1.8.2
     FetchContent_MakeAvailable(whisper)
-    add_executable(earnest src/app/main.cpp src/audio/microphone.cpp src/audio/portaudio_player.cpp src/speech/whisper_transcriber.cpp src/tts/chatterbox.cpp)
+    add_executable(earnest src/app/main.cpp src/audio/microphone.cpp src/audio/portaudio_player.cpp src/audio/wav.cpp src/speech/whisper_transcriber.cpp src/speech/chatterbox_synthesiser.cpp)
     target_compile_options(earnest PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(earnest PRIVATE regex-parser ollama-parser home-assistant spotify-executor executor-router audio app-settings command-worker
         whisper PkgConfig::PORTAUDIO Threads::Threads)

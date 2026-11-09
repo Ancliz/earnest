@@ -173,17 +173,21 @@ port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
 | --- | --- |
 | `src/app/main.cpp` | Implementation selection, modes and the capture loop |
 | `src/app/command_worker.*` | Worker thread: transcribe, filter, parse, execute, reload configuration |
+| `src/app/spoken_reply.hpp` | Chooses the words said after a command |
 | `src/app/logging.*` | Console and file log sinks |
 | `src/app/settings.*` | Arguments, connection settings, help |
 | `src/commands/command.hpp` | `Command`, `Device`, `Context`, `Result`, and the `Parser`/`Executor` interfaces |
 | `src/commands/services.hpp` | Service catalogue types, filled by executor discovery |
 | `src/config/configuration.*` | YAML decoding, bounded file reads, and transactional reload |
 | `src/speech/transcriber.hpp` | `Speech::Transcriber` interface |
+| `src/speech/synthesiser.*` | `Speech::Synthesiser` interface and `SpeechService` |
+| `src/speech/chatterbox_synthesiser.*` | Chatterbox speech server client |
 | `src/speech/whisper_transcriber.*` | Whisper model lifetime and speech-to-text |
 | `src/audio/microphone.*` | PortAudio capture and bounded capture queue |
 | `src/audio/portaudio_player.*` | PortAudio playback of generated speech |
 | `src/audio/utterance_buffer.*` | Speech energy, silence boundaries, overflow recovery |
-| `src/audio/audio.hpp` | Shared audio sample type and capture constants |
+| `src/audio/wav.*` | WAV decoding |
+| `src/audio/audio.hpp` | Shared audio types, the `Audio::Player` interface and capture constants |
 | `src/home_assistant/home_assistant.*` | Discovery, authenticated state/service queries, and posting |
 | `src/home_assistant/control_policy.*` | Pure command resolution, capability checks, and AC airflow policy |
 | `src/parser/regex_parser.*` | Regex backend and compiled rule snapshot |

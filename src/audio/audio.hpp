@@ -6,7 +6,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 namespace Audio {
@@ -21,22 +20,37 @@ constexpr int sampleRate = 16000;
 /// Samples in one 100 ms capture block.
 constexpr int blockSamples = sampleRate / 10;
 
-/// Float32 PCM, interleaved if multichannel.
-/// sampleRate and channels must both be greater than zero.
-/// samples.size() must be divisible by channels.
+/**
+ * @brief Float32 PCM at any rate, interleaved if multichannel.
+ *
+ * sampleRate and channels must both be greater than zero, and samples.size() divisible by channels.
+ */
 struct Buffer {
+
+    /// Interleaved samples.
     std::vector<float> samples;
+
+    /// Samples per second, per channel.
     std::uint32_t sampleRate;
+
+    /// Interleaved channel count.
     std::uint16_t channels;
 };
 
+/**
+ * @brief Plays audio.
+ */
 class Player {
 public:
+    /**
+     * @brief Destroy a player through the interface.
+     */
     virtual ~Player() = default;
 
+    /**
+     * @brief Play the audio, blocking until it finishes.
+     */
     virtual void play(const Buffer& audio) = 0;
 };
-
-Buffer decodeWav(std::string_view bytes);
 
 }

@@ -87,17 +87,17 @@ volume_level is the spoken volume as a percentage: copy the number said, so "vol
 A service marked "device": false acts on no device, so heard and entity are "".
 reply is a few natural words to say aloud once the command succeeds, such as "Turning on the kitchen speaker."; use ""
 for a service marked "device": false, whose answer comes from the service.
-Make it natural, if the device is "my phone" reply with "your phone"
+Speak to the user: their own devices are "your", so "my phone" becomes "your phone".
 )";
 
 /// Worked examples; small models follow these more reliably than rules alone.
 const char* const examples = R"(Examples, using illustrative devices:
 "turn on the kitchen speaker" -> {"domain": "media_player", "service": "turn_on", "heard": "kitchen speaker", "entity":
-"media_player.kitchen", "data": {}};
+"media_player.kitchen", "data": {}, "reply": "Turning on the kitchen speaker."};
 "play the kitchen speaker" -> {"domain": "media_player", "service": "media_play", "heard": "kitchen speaker", "entity":
-"media_player.kitchen", "data": {}};
+"media_player.kitchen", "data": {}, "reply": "Playing the kitchen speaker."};
 "set the desk ramp to forty percent" -> {"domain": "light", "service": "turn_on", "heard": "desk ramp", "entity":
-"light.desk_lamp", "data": {"brightness_pct": 40}}.
+"light.desk_lamp", "data": {"brightness_pct": 40}, "reply": "Setting the desk lamp to forty percent."}.
 )";
 
 /**

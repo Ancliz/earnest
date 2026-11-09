@@ -160,13 +160,15 @@ optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const s
         return nullopt;
     }
 
+    const auto reply = fillReply(rule.reply, *captured);
+
     // A relative rule with a spoken amount ("up by ten") carries it for the executor to resolve.
     if(rule.relative && captured->contains("value")) {
-        return Command{rule.domain, rule.service, *entity, {{"amount", captured->at("value")}}, fillReply(rule.reply, *captured)};
+        return Command{rule.domain, rule.service, *entity, {{"amount", captured->at("value")}}, reply};
     }
 
     const auto data = fillTemplate(rule.body, *captured);
-    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data, fillReply(rule.reply, *captured)}) : nullopt;
+    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data, reply}) : nullopt;
 }
 } // namespace
 

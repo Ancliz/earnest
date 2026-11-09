@@ -8,8 +8,7 @@
 #include "commands/command.hpp"
 #include "config/configuration.hpp"
 #include "speech/transcriber.hpp"
-#include "tts/tts.hpp"
-#include "audio/audio.hpp"
+#include "speech/synthesiser.hpp"
 
 #include <condition_variable>
 #include <deque>
@@ -51,7 +50,8 @@ class CommandWorker {
     /// Speech recognizer, used on the worker thread only.
     Speech::Transcriber& transcriber;
 
-    tts::SpeechService speechService;
+    /// Says the outcome of each command, used on the worker thread only.
+    Speech::SpeechService& speech;
 
     /// Command parser, used on the worker thread only.
     Commands::Parser& parser;
@@ -104,7 +104,7 @@ public:
      * @throws std::system_error If the thread cannot start.
      */
     CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                  Config::Configuration& configuration, tts::Engine& engine, Audio::Player& player, string wakeWord);
+                  Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord);
 
     /**
      * @brief Finish every submitted utterance, then stop the thread.

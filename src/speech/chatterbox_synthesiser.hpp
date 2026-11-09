@@ -5,16 +5,16 @@
 
 #pragma once
 
-#include "tts/tts.hpp"
+#include "speech/synthesiser.hpp"
 
 #include <httplib.h>
 #include <string>
 
-namespace tts {
+namespace Speech {
 /**
  * @brief Asks a Chatterbox server, over its OpenAI-style speech endpoint, to voice text.
  */
-class ChatterboxClient final : public Engine {
+class ChatterboxSynthesiser final : public Synthesiser {
 
     /// Connection to the speech server.
     httplib::Client client;
@@ -26,7 +26,7 @@ public:
     /**
      * @brief Configure the server origin and voice without making a request.
      */
-    ChatterboxClient(const std::string& url, const std::string& voice) : client(url), voice(voice) {}
+    ChatterboxSynthesiser(const std::string& url, const std::string& voice) : client(url), voice(voice) {}
 
     /**
      * @brief Generate speech for the text.
@@ -34,4 +34,4 @@ public:
      */
     Buffer generate(string_view text) override;
 };
-} // namespace tts
+} // namespace Speech

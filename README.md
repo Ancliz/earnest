@@ -142,8 +142,8 @@ Every class, type, function and method has a Doxygen comment. With Doxygen insta
 ## Project layout
 
 - `src/app/`: startup, settings, logging, implementation selection and the command worker.
-- `src/audio/`: microphone capture and utterance buffering.
-- `src/speech/`: the transcriber interface and Whisper implementation.
+- `src/audio/`: microphone capture, utterance buffering, WAV decoding and playback.
+- `src/speech/`: the transcriber and synthesiser interfaces, with Whisper and Chatterbox implementations.
 - `src/ollama/`: the Ollama client and LLM parser.
 - `src/spotify/`: the Spotify executor, a client of the Spotify control server.
 - `src/parser/`: the regex and fallback parsers, phrase rules, spoken numbers, wake word and name matching.

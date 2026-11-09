@@ -36,8 +36,8 @@ bool logResult(const Commands::Result& result, bool preview) {
 }
 
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                             Config::Configuration& configuration, tts::Engine& engine, Audio::Player& player, string wakeWord)
-    : transcriber(transcriber), speechService(engine, player), parser(parser), executor(executor), configuration(configuration),
+                             Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord)
+    : transcriber(transcriber), speech(speech), parser(parser), executor(executor), configuration(configuration),
       wakeWord(std::move(wakeWord)), thread(&CommandWorker::run, this) {}
 
 CommandWorker::~CommandWorker() {
@@ -137,6 +137,12 @@ void CommandWorker::handle(Samples utterance) {
     if(command) {
         auto result = executor.execute(*command);
         logResult(result, false);
-        speechService.speak(spokenReply(*command, result));
+
+        // The command has already run, so a speech failure is reported as just that.
+        try {
+            speech.speak(spokenReply(*command, result));
+        } catch(const std::exception& error) {
+            spdlog::warn("Cannot speak: {}", error.what());
+        }
     }
 }

@@ -3,7 +3,8 @@
  * @brief Chatterbox server requests.
  */
 
-#include "chatterbox.hpp"
+#include "chatterbox_synthesiser.hpp"
+#include "audio/wav.hpp"
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -12,8 +13,8 @@
 using std::runtime_error;
 using std::string;
 
-namespace tts {
-Buffer ChatterboxClient::generate(string_view text) {
+namespace Speech {
+Buffer ChatterboxSynthesiser::generate(string_view text) {
     spdlog::debug("Requesting speech: {} bytes of text", text.size());
     const nlohmann::json body = {{"input", string(text)}, {"voice", voice}};
     const auto response = client.Post("/v1/audio/speech", body.dump(), "application/json");
@@ -27,4 +28,4 @@ Buffer ChatterboxClient::generate(string_view text) {
     spdlog::debug("Speech server returned {} bytes", response->body.size());
     return Audio::decodeWav(response->body);
 }
-} // namespace tts
+} // namespace Speech
