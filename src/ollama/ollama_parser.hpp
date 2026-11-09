@@ -26,11 +26,15 @@ class OllamaParser final : public Commands::Parser {
     /// Configured rooms, physical devices and spoken names.
     Home::Registry registry;
 
+    /// Whether to load the unchanging part of the prompt before each request; see OllamaClient::sendPrerequest().
+    bool prerequest;
+
 public:
     /**
      * @brief Configure the Ollama server and model without making a request.
+     * @param[in] prerequest Whether to speed up requests in a way specific to qwen3.5:4b.
      */
-    OllamaParser(const string& url, const string& model) : client(url, model) {}
+    OllamaParser(const string& url, const string& model, bool prerequest = true) : client(url, model), prerequest(prerequest) {}
 
     /**
      * @brief Apply the phrase file's settings, such as the registry.

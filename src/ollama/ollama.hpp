@@ -45,4 +45,16 @@ public:
      */
     json chat(const json& messages, const json& tools = json::array(),
               const ordered_json& format = ordered_json::object());
+
+    /**
+     * @brief Load the unchanging start of a prompt, so that the chat request after it reads only what follows.
+     *
+     * Written for qwen3.5:4b, and tested on nothing else. That model re-read the whole prompt
+     * whenever the end of it differed, and doesn't after this; why isn't established. The text is
+     * wrapped by hand in that model's format, so with another model it wouldn't match the real prompt.
+     *
+     * @param[in] systemStart The start of the system message, the same in every request.
+     * @throws std::runtime_error If the server doesn't answer, as the chat request wouldn't work either.
+     */
+    void sendPrerequest(const string& systemStart);
 };

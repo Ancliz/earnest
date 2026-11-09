@@ -24,6 +24,12 @@ int main() {
         lastPrompt = request.body;
         response.set_content(json{{"message", {{"content", answer.dump()}}}}.dump(), "application/json");
     });
+    std::vector<string> prerequests;
+    int prerequestStatus = 200;
+    server.Post("/api/generate", [&](const httplib::Request& request, httplib::Response& response) {
+        prerequests.push_back(json::parse(request.body).at("prompt").get<string>());
+        response.status = prerequestStatus;
+    });
     const int port = server.bind_to_any_port("127.0.0.1");
 
     if(port <= 0) {
@@ -62,6 +68,8 @@ int main() {
     check(song && song->data["song"] == "never gonna give you up", "a negative word in a song title is not a refusal");
     answer = request("wonderwall");
     check(!parser.parse("don't play wonderwall", context), "a negated song request is refused");
+    const string opening = "<|im_start|>system\n";
+    check(!prerequests.empty() && prerequests.back().rfind(opening, 0) == 0, "a prerequest goes before the model is asked");
     Context remembered = context;
     remembered.defaultDevice = "media_player.q800";
     answer = {{"domain", "media_player"}, {"service", "turn_off"}, {"heard", "it"}, {"entity", ""}, {"data", json::object()}, {"reply", ""}};
@@ -77,6 +85,15 @@ int main() {
 
     answer = pointing("it", "media_player.q800");
     check(parser.parse("turn it off", talking).has_value() && lastPrompt.find("pause the kitchen") != string::npos && lastPrompt.find("(failed)") != string::npos, "the model is told the conversation and how it went");
+    const auto loaded = prerequests.back().substr(opening.size());
+    const auto sent = json::parse(lastPrompt).at("messages")[0].at("content").get<string>();
+    check(sent.rfind(loaded, 0) == 0 && sent.size() > loaded.size() && loaded.find("Earlier requests") == string::npos, "the prerequest is exactly the start of the prompt, without the conversation");
+    prerequestStatus = 500;
+    check(parser.parse("turn it off", talking).has_value(), "a failed prerequest doesn't stop the command");
+    prerequestStatus = 200;
+    OllamaParser direct("http://127.0.0.1:" + std::to_string(port), "test", false);
+    const auto before = prerequests.size();
+    check(direct.parse("turn it off", talking).has_value() && prerequests.size() == before, "the prerequest can be turned off");
     parser.parse("turn it off", context);
     check(lastPrompt.find("Earlier requests") == string::npos, "with no conversation the prompt says nothing about one");
     answer = pointing("the other one", "media_player.kitchen");

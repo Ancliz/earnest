@@ -53,3 +53,19 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
 
     return reply;
 }
+
+void OllamaClient::sendPrerequest(const string& systemStart) {
+    // One token is the least a generate request can ask for, and its answer is of no use.
+    const ordered_json request = {{"model", model},
+                                  {"stream", false},
+                                  {"raw", true},
+                                  {"prompt", "<|im_start|>system\n" + systemStart},
+                                  {"options", {{"temperature", 0}, {"num_predict", 1}}}};
+    const auto response = client.Post("/api/generate", request.dump(), "application/json");
+
+    if(!response) {
+        throw runtime_error("Cannot query Ollama: " + httplib::to_string(response.error()));
+    } else if(response->status != 200) {
+        spdlog::warn("Ollama prerequest returned HTTP {}; continuing without it", response->status);
+    }
+}

@@ -283,19 +283,21 @@ string describeHistory(const vector<Commands::PastRequest>& history) {
 }
 
 /**
- * @brief The system and user messages for a request.
- *
- * The conversation goes last in the system message, so the unchanging part stays a cacheable prefix.
+ * @brief The part of the system message that is the same for every request while the devices are.
  */
-json buildMessages(const string& request, const Offer& offer, const vector<Commands::PastRequest>& history) {
-    return {{{"role", "system"},
-             {"content", string(instructions) + examples +
-                             "Services with their allowed and required data fields: " + offer.services.dump() +
-                             ". Devices: " + offer.devices.dump() +
-                             ". A service's description says how people ask for it; prefer the service whose description "
-                             "matches the wording. If no service fits the request, return empty strings." +
-                             describeHistory(history)}},
-            {{"role", "user"}, {"content", request}}};
+string stablePrompt(const Offer& offer) {
+    return string(instructions) + examples + "Services with their allowed and required data fields: " + offer.services.dump() +
+           ". Devices: " + offer.devices.dump() +
+           ". A service's description says how people ask for it; prefer the service whose description "
+           "matches the wording. If no service fits the request, return empty strings.";
+}
+
+/**
+ * @brief The system and user messages for a request.
+ * @param[in] stable What stablePrompt() returned; the conversation goes after it, as it changes.
+ */
+json buildMessages(const string& stable, const string& request, const vector<Commands::PastRequest>& history) {
+    return {{{"role", "system"}, {"content", stable + describeHistory(history)}}, {{"role", "user"}, {"content", request}}};
 }
 
 /**
@@ -440,7 +442,13 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
     const auto offer = describeOffer(context, registry);
 
     try {
-        const auto reply = client.chat(buildMessages(request, offer, context.history), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
+        const auto stable = stablePrompt(offer);
+
+        if(prerequest) {
+            client.sendPrerequest(stable);
+        }
+
+        const auto reply = client.chat(buildMessages(stable, request, context.history), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");

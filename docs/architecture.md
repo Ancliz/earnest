@@ -95,6 +95,25 @@ through one callback: the executor reads `advantage_air` and `voice_control`, an
 `RegexParser` reads `rules`, and both parsers build a `Home::Registry` from `aliases`, `rooms` and `devices`, which corrects the rooms and groupings executors discover. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
+## Ollama prerequest
+
+This is specific to `qwen3.5:4b`, the only model it has been tested on. That model re-read the
+whole prompt, about 2 s, whenever the end of it differed, even though only the last few words
+change between requests. `OllamaParser` now first sends the unchanging start of the prompt, asking
+for one token, after which requests read only what follows it.
+
+| Model time, with the model already loaded | Off | On |
+| --- | --- | --- |
+| No conversation | 3.4 s | 1.7 s |
+| With conversation | 3.4 s | 2.2 s |
+
+Why this works hasn't been established. The benefit also lasted into later requests sent without a
+prerequest while the model stayed loaded, so an Ollama update could change the result.
+
+It is on by default. Turn it off with `--no-prerequest` when using any other model: the prerequest
+is wrapped by hand in this model's format, so elsewhere it wouldn't match the real prompt. A failed
+prerequest is ignored unless the server doesn't answer at all.
+
 ## Side effects
 
 - Parsing, `validateCommand`, and `controllableDevices` are pure.

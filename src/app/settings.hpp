@@ -61,6 +61,9 @@ struct Settings {
     /// Ollama model given with --ollama-model; empty defers to OLLAMA_MODEL.
     string ollamaModel;
 
+    /// Whether to send Ollama's prerequest, which is specific to qwen3.5:4b; cleared by --no-prerequest.
+    bool prerequest = true;
+
     /// Whisper GGML model path.
     string model = "models/ggml-base.en.bin";
 
