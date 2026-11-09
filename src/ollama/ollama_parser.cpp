@@ -361,6 +361,26 @@ void correctWrongDomain(Command& command, const string& request, const Context& 
 }
 
 /**
+ * @brief Whether a request says not to do something, leaving free text such as a song title out of it.
+ *
+ * "Never Gonna Give You Up" is a song to queue, while "don't queue wonderwall" is a refusal.
+ */
+bool isNegated(const Command& command, const string& request) {
+    auto text = Grammar::normalizeText(request);
+
+    for(const auto& value : command.data) {
+        const auto said = value.is_string() ? Grammar::normalizeText(value.get<string>()) : string();
+        const auto found = said.empty() ? string::npos : text.find(said);
+
+        if(found != string::npos) {
+            text.erase(found, said.size());
+        }
+    }
+
+    return Grammar::hasNegation(text);
+}
+
+/**
  * @brief Reduce the data to the fields the service accepts, as small models often echo the device into it.
  */
 void keepAllowedFields(Command& command, const Commands::ServiceFields& fields) {
@@ -492,6 +512,14 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         }
 
         keepAllowedFields(command, *fields);
+
+        // The rules decline negation, but a model tends to drop the "don't" and act on the rest.
+        if(isNegated(command, request)) {
+            spdlog::warn("Rejecting negated request: {}", request);
+            failure = "I won't act on a request that says not to";
+            return nullopt;
+        }
+
         applyVolumeDirection(command, request);
 
         if(!convertPercentages(command, request)) {

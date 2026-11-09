@@ -201,6 +201,11 @@ optional<double> parseLevel(string text) {
     return (tens->second + units->second) / 100.0;
 }
 
+bool hasNegation(const string& text) {
+    static const regex negation(R"(\b(?:not|never|dont|don't)\b)");
+    return std::regex_search(text, negation);
+}
+
 bool isNonSpeech(const string& text) {
     static const regex labels(R"(\([^)]*\)|\[[^\]]*\]|\*[^*]*\*)");
     // Laughter, hums and hesitations, allowing drawn-out spellings such as "hmmm" and "uhhh".

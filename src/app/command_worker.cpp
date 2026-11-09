@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <spdlog/spdlog.h>
+#include <vector>
 
 using Commands::json;
 using std::lock_guard;
@@ -33,6 +34,21 @@ bool logResult(const Commands::Result& result, bool preview) {
     }
 
     return result.success;
+}
+
+void learnDeviceNames(Speech::Transcriber& transcriber, const Commands::Devices& devices) {
+    // No devices means the servers are down, which shouldn't erase what was learned.
+    if(devices.empty()) {
+        return;
+    }
+
+    std::vector<string> names;
+
+    for(const auto& device : devices) {
+        names.push_back(device.name);
+    }
+
+    transcriber.setVocabulary(names);
 }
 
 /**
@@ -142,7 +158,11 @@ void CommandWorker::handle(Samples utterance) {
     }
 
     reloadConfiguration();
-    const auto command = parser.parse(*text, {executor.discoverDevices(), executor.discoverServices()});
+    auto devices = executor.discoverDevices();
+
+    // Startup may have run before the servers were up, and devices come and go.
+    learnDeviceNames(transcriber, devices);
+    const auto command = parser.parse(*text, {std::move(devices), executor.discoverServices()});
     logParsed(command);
 
     if(command) {

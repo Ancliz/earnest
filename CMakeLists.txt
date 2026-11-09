@@ -57,15 +57,15 @@ foreach(target configuration regex-parser home-assistant spotify-executor execut
 endforeach()
 
 if(BUILD_TESTING)
-    foreach(name parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
+    foreach(name parser ollama_parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
         add_executable(${name}_test tests/${name}_test.cpp)
         target_compile_options(${name}_test PRIVATE -Wall -Wextra -Wpedantic)
-        target_link_libraries(${name}_test PRIVATE regex-parser home-assistant spotify-executor executor-router configuration audio app-settings command-worker)
+        target_link_libraries(${name}_test PRIVATE regex-parser ollama-parser home-assistant spotify-executor executor-router configuration audio app-settings command-worker)
         target_compile_definitions(${name}_test PRIVATE SMARTHOME_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
         add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
 
-    set_tests_properties(home_assistant spotify PROPERTIES TIMEOUT 20)
+    set_tests_properties(home_assistant spotify ollama_parser PROPERTIES TIMEOUT 20)
 endif()
 
 option(SMARTHOME_BUILD_VOICE "Build the Whisper microphone application" ON)

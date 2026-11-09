@@ -8,6 +8,7 @@
 #include "control_policy.hpp"
 #include <chrono>
 #include <httplib.h>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -90,8 +91,8 @@ class HomeAssistant final : public Executor {
     /// Cached service catalogue.
     ServiceCatalogue services;
 
-    /// When services was fetched; default-constructed (the epoch) when it must be fetched.
-    Clock::time_point fetched;
+    /// When services was fetched; empty when it must be fetched.
+    std::optional<Clock::time_point> fetched;
 
     /**
      * @brief GET an API path that returns a JSON array.

@@ -44,6 +44,14 @@ public:
     /// Thread that ran the last transcription.
     std::thread::id thread;
 
+    /// Words most recently given to setVocabulary().
+    vector<string> vocabulary;
+
+    /**
+     * @brief Record the words.
+     */
+    void setVocabulary(const vector<string>& words) override { vocabulary = words; }
+
     /**
      * @brief Return the scripted text for the utterance's index.
      */
@@ -90,15 +98,18 @@ public:
     /// Entities executed, in order.
     vector<string> executed;
 
+    /// Devices reported by discovery.
+    Commands::Devices devices;
+
     /**
      * @brief Accept any configuration.
      */
     void configure(const json&) override {}
 
     /**
-     * @brief No devices; the echo parser needs none.
+     * @brief The configured devices; the echo parser needs none.
      */
-    Commands::Devices discoverDevices() override { return {}; }
+    Commands::Devices discoverDevices() override { return devices; }
 
     /**
      * @brief No services; the echo parser needs none.
@@ -166,6 +177,29 @@ public:
 };
 
 /**
+ * @brief The vocabulary after one command, starting from "old", when discovery finds the given devices.
+ */
+vector<string> vocabularyAfterCommand(Commands::Devices devices) {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = {"a"};
+    transcriber.vocabulary = {"old"};
+    EchoParser parser;
+    RecordingExecutor executor;
+    executor.devices = std::move(devices);
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    SilentSynthesiser synthesiser;
+    SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+
+    {
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "");
+        worker.submit(utterance(0));
+    }
+
+    return transcriber.vocabulary;
+}
+
+/**
  * @brief What the worker says when a parser refuses with the given reason.
  */
 vector<string> sayRefusal(const string& reason) {
@@ -217,6 +251,8 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
  * @brief Verify ordering, draining, non-blocking submission, backlog limits, wake words, and failure recovery.
  */
 int main() {
+    check(vocabularyAfterCommand({Commands::Device{"light.a", "Desk Lamp", "light", "on"}}) == vector<string>{"Desk Lamp"}, "each command refreshes the transcriber's device names");
+    check(vocabularyAfterCommand({}) == vector<string>{"old"}, "an outage does not erase the learned device names");
     check(sayRefusal("q800 isn't a spotify device") == vector<string>{"q800 isn't a spotify device, sir."}, "a refusal says what went wrong");
     check(sayRefusal("I'm sorry sir, I can't.") == vector<string>{"I'm sorry sir, I can't."}, "a reason already addressing sir is said as written");
     check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");

@@ -16,7 +16,9 @@ using Audio::Samples;
  *
  * A block is speech when its RMS reaches the threshold. An utterance needs at least two speech
  * blocks, keeps up to two quiet lead-in blocks, and ends after the configured silence. Audio
- * after a capture gap or beyond 15 seconds is discarded until the next full silence.
+ * after a capture gap or beyond 15 seconds is discarded until the next full silence. Sound that
+ * lasts 15 seconds is treated as background, such as music, and speech must then rise above it;
+ * the background fades once the room quietens.
  */
 class UtteranceBuffer {
 public:
@@ -50,6 +52,9 @@ private:
 
     /// RMS level treated as speech.
     float threshold;
+
+    /// RMS level of steady background sound; zero in a quiet room.
+    double background = 0;
 
     /// Whether audio is ignored until the next full silence.
     bool discardUntilSilence = false;

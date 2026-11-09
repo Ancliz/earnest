@@ -157,16 +157,8 @@ int main(int argc, char* argv[]) {
             return previewText(settings.parseText, parser, *executor) ? 0 : 1;
         }
 
-        auto whisper = make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
-        vector<string> deviceNames;
-
-        // Device names spelled as Home Assistant spells them help Whisper hear them.
-        for(const auto& device : executor->discoverDevices()) {
-            deviceNames.push_back(device.name);
-        }
-
-        whisper->setVocabulary(deviceNames);
-        unique_ptr<Transcriber> transcriber = std::move(whisper);
+        unique_ptr<Transcriber> transcriber = make_unique<WhisperTranscriber>(settings.model, settings.threads, settings.gpu);
+        learnDeviceNames(*transcriber, executor->discoverDevices());
 
         Speech::ChatterboxSynthesiser synthesiser(connection.chatterboxUrl, connection.chatterboxVoice);
         listen(settings, *transcriber, synthesiser, parser, *executor, configuration);

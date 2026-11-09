@@ -5,6 +5,7 @@
 
 #include "utterance_buffer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -15,6 +16,12 @@ using std::nullopt;
 using std::optional;
 
 namespace {
+/// How far above the background a block must be to count as speech.
+constexpr double backgroundMargin = 1.5;
+
+/// How much of the background remains after each block well below it.
+constexpr double backgroundFade = 0.98;
+
 /**
  * @brief Root-mean-square level of a block; zero for an empty block.
  */
@@ -62,7 +69,12 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
         discardUntilSilence = true;
     }
 
-    const bool speech = !block.empty() && rms(block) >= threshold;
+    const double level = rms(block);
+    const bool speech = !block.empty() && level >= std::max<double>(threshold, background * backgroundMargin);
+
+    if(level < background / 2) {
+        background *= backgroundFade;
+    }
 
     if(discardUntilSilence) {
         trailingSilentBlocks = speech ? 0 : trailingSilentBlocks + 1;
@@ -104,6 +116,7 @@ optional<Samples> UtteranceBuffer::append(const Samples& block, bool discontinui
 
     if(audio.size() >= 15 * sampleRate) {
         lastEvent = Event::TooLong;
+        background = rms(audio);
         reset();
         discardUntilSilence = true;
     }

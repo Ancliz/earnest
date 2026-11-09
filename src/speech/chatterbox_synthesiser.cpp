@@ -14,6 +14,13 @@ using std::runtime_error;
 using std::string;
 
 namespace Speech {
+ChatterboxSynthesiser::ChatterboxSynthesiser(const string& url, const string& voice) : client(url), voice(voice) {
+    // httplib waits five minutes by default, which would stall every later command.
+    client.set_connection_timeout(5);
+    client.set_read_timeout(30);
+    client.set_write_timeout(10);
+}
+
 Buffer ChatterboxSynthesiser::generate(string_view text) {
     spdlog::debug("Requesting speech: {} bytes of text", text.size());
     const nlohmann::json body = {{"input", string(text)}, {"voice", voice}};

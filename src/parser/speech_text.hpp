@@ -48,6 +48,11 @@ bool hasPercentSuffix(const string& text);
 std::optional<double> parseLevel(string text);
 
 /**
+ * @brief Whether normalized text says not to do something: "not", "never" or "don't".
+ */
+bool hasNegation(const string& text);
+
+/**
  * @brief Whether a transcript holds no words, only sounds.
  *
  * True when everything left after removing Whisper's sound labels ("(laughs)", "[MUSIC]",

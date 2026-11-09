@@ -213,9 +213,7 @@ json HomeAssistant::getArray(const string& path) {
 }
 
 bool HomeAssistant::refreshServices(bool force) {
-    const auto age = Clock::now() - fetched;
-
-    if(age < (force ? refetchInterval : catalogueLifetime)) {
+    if(fetched && Clock::now() - *fetched < (force ? refetchInterval : catalogueLifetime)) {
         return false;
     }
 
@@ -228,7 +226,7 @@ void HomeAssistant::configure(const json& configuration) {
     auto nextPolicy = readAirflowPolicy(configuration);
     scope = readVoiceScope(configuration);
     policy = std::move(nextPolicy);
-    fetched = {};
+    fetched.reset();
 }
 
 Devices HomeAssistant::discoverDevices() {

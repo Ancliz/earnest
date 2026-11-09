@@ -7,6 +7,7 @@
 
 #include "audio/audio.hpp"
 #include <string>
+#include <vector>
 
 namespace Speech {
 /**
@@ -26,5 +27,11 @@ public:
      * @throws std::exception If recognition fails.
      */
     virtual std::string transcribe(Audio::Samples utterance) = 0;
+
+    /**
+     * @brief Bias recognition towards words that commands use; engines without biasing ignore it.
+     * @param[in] words Words to favour, such as device names; empty clears the bias.
+     */
+    virtual void setVocabulary(const std::vector<std::string>&) {}
 };
 } // namespace Speech

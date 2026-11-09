@@ -54,5 +54,5 @@ public:
      * ("Q990" over "queue"). Words placed here can be dropped from the start of a transcript as
      * if already said, so never include a wake word. An empty list clears the bias.
      */
-    void setVocabulary(const std::vector<string>& words);
+    void setVocabulary(const std::vector<string>& words) override;
 };

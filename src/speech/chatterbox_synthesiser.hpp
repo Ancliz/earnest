@@ -26,7 +26,7 @@ public:
     /**
      * @brief Configure the server origin and voice without making a request.
      */
-    ChatterboxSynthesiser(const std::string& url, const std::string& voice) : client(url), voice(voice) {}
+    ChatterboxSynthesiser(const std::string& url, const std::string& voice);
 
     /**
      * @brief Generate speech for the text.

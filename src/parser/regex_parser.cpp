@@ -188,7 +188,7 @@ void RegexParser::configure(const json& configuration) {
 
 optional<Command> RegexParser::parse(const string& text, const Commands::Context& context) {
     static const regex negativeNumber(R"(-\s*[0-9])");
-    static const regex negationOrSequence(R"(\b(?:not|never|dont|don't|then|but)\b)");
+    static const regex sequence(R"(\b(?:then|but)\b)");
 
     if(text.empty() || text.size() > 512 || std::regex_search(text, negativeNumber)) {
         return nullopt;
@@ -196,7 +196,7 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
 
     const string normalized = Grammar::normalizeText(text);
 
-    if(std::regex_search(normalized, negationOrSequence)) {
+    if(Grammar::hasNegation(normalized) || std::regex_search(normalized, sequence)) {
         return nullopt;
     }
 

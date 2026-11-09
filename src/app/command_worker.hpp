@@ -35,6 +35,13 @@ void logParsed(const std::optional<Commands::Command>& command);
 bool logResult(const Commands::Result& result, bool preview);
 
 /**
+ * @brief Bias the transcriber towards the devices' names, spelled as their executors spell them.
+ *
+ * An empty list leaves the current bias in place.
+ */
+void learnDeviceNames(Speech::Transcriber& transcriber, const Commands::Devices& devices);
+
+/**
  * @brief Transcribes, parses and executes utterances on its own thread, in the order submitted.
  *
  * The capture loop only submits audio, so it keeps listening while a command runs. The

@@ -47,5 +47,34 @@ int main() {
 
     check(buffer.event() == UtteranceBuffer::Event::TooLong, "an overlong utterance is reported");
     check(!buffer.finish(), "long utterance is discarded on shutdown");
+
+    UtteranceBuffer room(0.01f, 200);
+    const Samples music(blockSamples, 0.05f);
+    const Samples voice(blockSamples, 0.2f);
+    const Samples soft(blockSamples, 0.02f);
+
+    for(int i = 0; i < 150; ++i) {
+        room.append(music, false);
+    }
+
+    check(room.event() == UtteranceBuffer::Event::TooLong, "steady sound is first discarded as an overlong utterance");
+    room.append(music, false);
+    room.append(music, false);
+    check(!room.finish(), "steady sound then counts as background");
+    room.append(voice, false);
+    room.append(voice, false);
+    room.append(music, false);
+    check(room.append(music, false).has_value(), "speech above the background is heard");
+    room.append(soft, false);
+    room.append(soft, false);
+    check(!room.finish(), "softer speech does not rise above the background");
+
+    for(int i = 0; i < 100; ++i) {
+        room.append(quiet, false);
+    }
+
+    room.append(soft, false);
+    room.append(soft, false);
+    check(room.finish().has_value(), "the background fades once the room is quiet");
     std::cout << checks << " utterance buffer checks passed\n";
 }
