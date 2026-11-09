@@ -95,6 +95,12 @@ through one callback: the executor reads `advantage_air` and `voice_control`, an
 `RegexParser` reads `rules`, and both parsers build a `Home::Registry` from `aliases`, `rooms` and `devices`, which corrects the rooms and groupings executors discover. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
+## Keeping the model loaded
+
+By default the Ollama server decides when to unload the model, normally after five idle minutes, and
+the next request then takes about 11 s. With `--keep-loaded`, every request sends `keep_alive: -1`, so
+the model stays in GPU memory until the server restarts or needs the memory for another model.
+
 ## Ollama prerequest
 
 This is specific to `qwen3.5:4b`, the only model it has been tested on. That model re-read the

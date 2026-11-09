@@ -64,6 +64,9 @@ struct Settings {
     /// Whether to send Ollama's prerequest, which is specific to qwen3.5:4b; cleared by --no-prerequest.
     bool prerequest = true;
 
+    /// Whether to ask Ollama never to unload the model; set by --keep-loaded.
+    bool keepLoaded = false;
+
     /// Whisper GGML model path.
     string model = "models/ggml-base.en.bin";
 

@@ -82,7 +82,7 @@ Check things without speaking or changing anything:
 ```
 
 `--list-devices` and `--parse` make read-only requests and need no Whisper model. Run
-`--help` for every option, including `--parser`, `--ollama-model`, `--no-prerequest` (turns off a speed-up specific to `qwen3.5:4b`; use it with any other model), `--threads`, `--threshold`, `--silence-ms`, `--log-level`
+`--help` for every option, including `--parser`, `--ollama-model`, `--no-prerequest` (turns off a speed-up specific to `qwen3.5:4b`; use it with any other model), `--keep-loaded` (never lets Ollama unload the model, avoiding a slow first request but holding its GPU memory), `--threads`, `--threshold`, `--silence-ms`, `--log-level`
 and `--log-file`.
 
 ## How it listens

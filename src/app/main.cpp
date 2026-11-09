@@ -131,7 +131,7 @@ int main(int argc, char* argv[]) {
         const auto connection = readConnectionSettings();
         const auto kind = settings.parser ? *settings.parser : parserKind(connection.parser);
         RegexParser rules;
-        OllamaParser model(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel, settings.prerequest);
+        OllamaParser model(connection.ollamaUrl, settings.ollamaModel.empty() ? connection.ollamaModel : settings.ollamaModel, settings.prerequest, settings.keepLoaded);
         FallbackParser hybrid(rules, model);
         Parser& parser = kind == ParserKind::Regex ? static_cast<Parser&>(rules) : kind == ParserKind::Ollama ? static_cast<Parser&>(model) : hybrid;
 

@@ -26,13 +26,17 @@ class OllamaClient {
     /// Model name and tag sent with each request.
     string model;
 
+    /// Whether to ask the server never to unload the model; otherwise the server's setting applies.
+    bool keepLoaded;
+
 public:
     /**
      * @brief Configure the endpoint and model without making a request.
      * @param[in] url Server origin, including scheme and port.
      * @param[in] model Installed model name and tag.
+     * @param[in] keepLoaded Whether to ask the server never to unload the model.
      */
-    OllamaClient(const string& url, const string& model);
+    OllamaClient(const string& url, const string& model, bool keepLoaded = false);
 
     /**
      * @brief Submit messages and optional tools to the chat endpoint.

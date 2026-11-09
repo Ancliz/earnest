@@ -71,6 +71,7 @@ int main() {
     checkThrows([] { parse({"earnest", "--parser", "gpt"}); }, "an unknown parser is rejected");
     check(parse({"earnest", "--ollama-model", "llama3.2:3b"}).ollamaModel == "llama3.2:3b", "the Ollama model is selectable");
     check(parse({"earnest"}).prerequest && !parse({"earnest", "--no-prerequest"}).prerequest, "the prerequest is on unless turned off");
+    check(!parse({"earnest"}).keepLoaded && parse({"earnest", "--keep-loaded"}).keepLoaded, "keeping the model loaded is off unless asked for");
     const auto preview = parse({"earnest", "--parse", "pause kitchen", "--cpu", "model.bin"});
     check(preview.mode == Mode::Parse && preview.parseText == "pause kitchen" && !preview.gpu &&
               preview.model == "model.bin",

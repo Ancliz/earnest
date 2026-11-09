@@ -30,7 +30,7 @@ void logTiming(const char* request, Clock::time_point start, const json& reply) 
 }
 } // namespace
 
-OllamaClient::OllamaClient(const string& url, const string& model) : client(url.c_str()), model(model) {
+OllamaClient::OllamaClient(const string& url, const string& model, bool keepLoaded) : client(url.c_str()), model(model), keepLoaded(keepLoaded) {
     client.set_connection_timeout(5);
     client.set_read_timeout(30);
     client.set_write_timeout(30);
@@ -44,6 +44,10 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
                             {"think", false},
                             {"options", {{"temperature", 0}, {"num_predict", 256}}},
                             {"messages", ordered_json::parse(messages.dump())}};
+
+    if(keepLoaded) {
+        request["keep_alive"] = -1;
+    }
 
     if(!format.empty()) {
         request["format"] = format;
@@ -76,11 +80,16 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
 
 void OllamaClient::sendPrerequest(const string& systemStart) {
     // One token is the least a generate request can ask for, and its answer is of no use.
-    const ordered_json request = {{"model", model},
-                                  {"stream", false},
-                                  {"raw", true},
-                                  {"prompt", "<|im_start|>system\n" + systemStart},
-                                  {"options", {{"temperature", 0}, {"num_predict", 1}}}};
+    ordered_json request = {{"model", model},
+                            {"stream", false},
+                            {"raw", true},
+                            {"prompt", "<|im_start|>system\n" + systemStart},
+                            {"options", {{"temperature", 0}, {"num_predict", 1}}}};
+
+    if(keepLoaded) {
+        request["keep_alive"] = -1;
+    }
+
     const auto start = Clock::now();
     const auto response = client.Post("/api/generate", request.dump(), "application/json");
 

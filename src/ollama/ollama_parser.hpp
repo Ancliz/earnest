@@ -33,8 +33,9 @@ public:
     /**
      * @brief Configure the Ollama server and model without making a request.
      * @param[in] prerequest Whether to speed up requests in a way specific to qwen3.5:4b.
+     * @param[in] keepLoaded Whether to ask the server never to unload the model.
      */
-    OllamaParser(const string& url, const string& model, bool prerequest = true) : client(url, model), prerequest(prerequest) {}
+    OllamaParser(const string& url, const string& model, bool prerequest = true, bool keepLoaded = false) : client(url, model, keepLoaded), prerequest(prerequest) {}
 
     /**
      * @brief Apply the phrase file's settings, such as the registry.

@@ -25,9 +25,11 @@ int main() {
         response.set_content(json{{"message", {{"content", answer.dump()}}}}.dump(), "application/json");
     });
     std::vector<string> prerequests;
+    bool prerequestKeepsLoaded = false;
     int prerequestStatus = 200;
     server.Post("/api/generate", [&](const httplib::Request& request, httplib::Response& response) {
         prerequests.push_back(json::parse(request.body).at("prompt").get<string>());
+        prerequestKeepsLoaded = json::parse(request.body).value("keep_alive", 0) == -1;
         response.status = prerequestStatus;
     });
     const int port = server.bind_to_any_port("127.0.0.1");
@@ -70,6 +72,7 @@ int main() {
     check(!parser.parse("don't play wonderwall", context), "a negated song request is refused");
     const string opening = "<|im_start|>system\n";
     check(!prerequests.empty() && prerequests.back().rfind(opening, 0) == 0, "a prerequest goes before the model is asked");
+    check(!prerequestKeepsLoaded && !json::parse(lastPrompt).contains("keep_alive"), "unloading is left to the server by default");
     Context remembered = context;
     remembered.defaultDevice = "media_player.q800";
     answer = {{"domain", "media_player"}, {"service", "turn_off"}, {"heard", "it"}, {"entity", ""}, {"data", json::object()}, {"reply", ""}};
@@ -94,6 +97,8 @@ int main() {
     OllamaParser direct("http://127.0.0.1:" + std::to_string(port), "test", false);
     const auto before = prerequests.size();
     check(direct.parse("turn it off", talking).has_value() && prerequests.size() == before, "the prerequest can be turned off");
+    OllamaParser kept("http://127.0.0.1:" + std::to_string(port), "test", true, true);
+    check(kept.parse("turn it off", talking).has_value() && prerequestKeepsLoaded && json::parse(lastPrompt).at("keep_alive") == -1, "both requests can keep the model loaded");
     parser.parse("turn it off", context);
     check(lastPrompt.find("Earlier requests") == string::npos, "with no conversation the prompt says nothing about one");
     answer = pointing("the other one", "media_player.kitchen");
