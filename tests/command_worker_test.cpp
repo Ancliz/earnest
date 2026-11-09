@@ -5,6 +5,7 @@
 
 #include "check.hpp"
 #include "app/command_worker.hpp"
+#include "app/spoken_reply.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -168,6 +169,15 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
  * @brief Verify ordering, draining, non-blocking submission, backlog limits, wake words, and failure recovery.
  */
 int main() {
+    const Command light{"light", "turn_on", "light.a", json::object(), "Turning it on."};
+    const Command volume{"media_player", "volume_set", "media_player.a", {{"volume_level", 0.3}}, "Louder."};
+    check(spokenReply(light, {true, "", light}) == "Turning it on.", "the parser's wording is said on success");
+    check(spokenReply({}, {true, "", {}}) == "Command sent, sir", "success without wording says the default");
+    check(spokenReply(light, {false, "broken", light}) == "Command failed, sir.", "a failure is not reported as the parser's wording");
+    check(spokenReply(light, {true, "", light, "The answer."}) == "The answer.", "an executor's answer comes first");
+    check(spokenReply(volume, {true, "", volume}) == "Volume set to 30 percent.", "a volume change says the level it set");
+    check(spokenReply(volume, {false, "broken", volume}) == "Command failed, sir.", "a failed volume change does not claim a level");
+
     check(runScript({"a", "b", "c"}) == vector<string>{"light.a", "light.b", "light.c"}, "commands run in submission order and drain on exit");
     check(runScript({"a", "throw", "c"}) == vector<string>{"light.a", "light.c"}, "a failed utterance does not stop the worker");
     check(runScript({"  ", "a"}) == vector<string>{"light.a"}, "blank transcripts are skipped");

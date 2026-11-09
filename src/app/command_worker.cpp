@@ -4,6 +4,7 @@
  */
 
 #include "command_worker.hpp"
+#include "spoken_reply.hpp"
 #include "parser/speech_text.hpp"
 
 #include <chrono>
@@ -29,10 +30,6 @@ bool logResult(const Commands::Result& result, bool preview) {
         spdlog::info("Would send: {}", json(result.command).dump());
     } else {
         spdlog::info("Command sent");
-    }
-
-    if(!result.reply.empty()) {
-        spdlog::info("Reply: {}", result.reply);
     }
 
     return result.success;
@@ -140,8 +137,6 @@ void CommandWorker::handle(Samples utterance) {
     if(command) {
         auto result = executor.execute(*command);
         logResult(result, false);
-        // An executor's answer beats the parser's wording, which is only an acknowledgement.
-        const string acknowledgement = command->reply.empty() ? "Command sent, sir" : command->reply;
-        speechService.speak(!result.reply.empty() ? result.reply : result.success ? acknowledgement : "Command failed, sir.");
+        speechService.speak(spokenReply(*command, result));
     }
 }
