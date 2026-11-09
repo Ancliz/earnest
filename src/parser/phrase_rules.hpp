@@ -47,6 +47,9 @@ struct Rule {
     /// Spoken words mapped to service values, such as "cooling" to "cool".
     json values;
 
+    /// What to say on success; "{slot}" takes a captured word. Empty for no particular wording.
+    string reply;
+
     /// Whether a captured number is a volume change amount rather than a body value.
     bool relative = false;
     

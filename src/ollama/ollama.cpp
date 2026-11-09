@@ -59,8 +59,9 @@ ordered_json commandFormat(const set<string>& domains, const set<string>& servic
                           {"service", oneOf(services)},
                           {"heard", {{"type", "string"}}},
                           {"entity", oneOf(entities)},
-                          {"data", {{"type", "object"}}}}},
-                        {"required", {"domain", "service", "heard", "entity", "data"}}};
+                          {"data", {{"type", "object"}}},
+                          {"reply", {{"type", "string"}}}}},
+                        {"required", {"domain", "service", "heard", "entity", "data", "reply"}}};
 }
 
 /**
@@ -315,7 +316,10 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
                      "volume_level is the spoken volume as a percentage: copy the number said, so "
                      "\"volume to 3\" is 3 and \"twenty percent\" is 20. \"Up\" or \"down\" without \"to\" "
                      "means volume_up or volume_down, with the number said as amount, or {} when none is said. "
-                     "A service marked \"device\": false acts on no device, so heard and entity are \"\". " +
+                     "A service marked \"device\": false acts on no device, so heard and entity are \"\". "
+                     "reply is a few natural words to say aloud once the command succeeds, such as \"Turning on the "
+                     "kitchen speaker.\"; use \"\" for a service marked \"device\": false, whose answer comes from the service. "
+                     "Make it natural, if the device is \"my phone\" reply with \"your pgone\"" +
                          string(examples) +
                          "Services with their allowed and required data fields: " + services.dump() +
                          ". Devices: " + devices.dump() + ". A service's description says how people ask for it; prefer the service whose description "
@@ -327,6 +331,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
             client.chat(messages, json::array(), commandFormat(domains, serviceNames, entities));
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
+        command.reply = content.value("reply", "");
         const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
         if(command.domain.empty() || !fields) {

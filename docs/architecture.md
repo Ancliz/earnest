@@ -29,7 +29,8 @@ implementations.
 | `Commands::Parser` | `configure(config)`, `parse(text, context)` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
-A `Commands::Command` is `{domain, service, entity, data}`. The services a command may
+A `Commands::Command` is `{domain, service, entity, data}`, plus an optional spoken `reply`
+worded by the parser (a rule's `reply`, or the Ollama model's). The services a command may
 name, and their fields, form a `Commands::ServiceCatalogue` (`src/commands/services.hpp`).
 Nothing is hard-coded: the executor discovers the catalogue, and parsers receive it in
 `Context::services` alongside the devices.

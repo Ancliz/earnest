@@ -251,6 +251,15 @@ int main() {
     check(!parser.parse("play the q990b", music), "playing a speaker that shares a name with a song request is left to a fallback");
     check(!parser.parse("add wonderwall", Context{music.devices}), "Spotify phrases match nothing without the Spotify catalogue");
 
+    const auto replyOf = [&](const char* reply, const char* text) {
+        RegexParser worded(json{{"version", 1}, {"rules", {{{"id", "cast"}, {"domain", "spotify"}, {"service", "cast"}, {"reply", reply}, {"phrases", {"cast to {device}", "cast"}}}}}});
+        const auto command = worded.parse(text, music);
+        return command ? command->reply : string("no command");
+    };
+    check(replyOf("Casting to {device}.", "cast to q990b") == "Casting to q990b.", "a rule's reply takes captured words");
+    check(replyOf("Done.", "cast to q990b") == "Done.", "a reply need not use a slot");
+    check(replyOf("Casting to {speaker}.", "cast to q990b") == "", "a reply naming an uncaptured slot is dropped");
+
     /*
      * @brief A parser that always proposes the same command, standing in for a language model.
      */

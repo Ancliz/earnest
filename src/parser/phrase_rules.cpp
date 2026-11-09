@@ -202,7 +202,7 @@ std::vector<Rule> compileRules(const json& configuration) {
 
     static const set<string> ruleFields = {"id",       "domain",       "service",     "phrases",
                                                 "regex",    "device_group", "value_group", "value_type",
-                                                "relative", "body",         "values"};
+                                                "relative", "body",         "values",      "reply"};
     std::vector<Rule> rules;
     set<string> ids;
 
@@ -223,6 +223,7 @@ std::vector<Rule> compileRules(const json& configuration) {
         rule.service = row.at("service").get<string>();
         rule.body = row.value("body", json::object());
         rule.values = row.value("values", json::object());
+        rule.reply = row.value("reply", string());
         rule.relative = row.value("relative", false);
         const bool volumeStep =
             rule.domain == "media_player" && (rule.service == "volume_up" || rule.service == "volume_down");

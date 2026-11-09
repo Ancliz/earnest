@@ -61,6 +61,11 @@ Syntax:
 A rule whose service acts on no device, such as Spotify's `get_queue` or `request_song`,
 needs no `{device}`; the command's entity is empty.
 
+`reply` is optional wording to say aloud when the command succeeds, such as
+`reply: 'Turning on {device}.'`. It can use word slots such as `{device}`, not numeric ones;
+if a slot isn't captured, the default acknowledgement is said. An executor's own answer, such as
+the queue, takes priority.
+
 `body` contains service fields, not `entity_id`; the parser supplies the resolved
 ID. A placeholder must occupy the whole field value, so numeric captures stay
 numbers, rather than becoming JSON strings. Each slot may appear once per phrase.

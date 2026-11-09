@@ -58,10 +58,13 @@ struct Command {
     
     /// Service fields, excluding entity_id.
     json data = json::object();
+
+    /// What to say once the command succeeds, from the parser; empty for no particular wording.
+    string reply = "";
 };
 
 /**
- * @brief Whether two commands have identical fields.
+ * @brief Whether two commands make the same service call; the wording of a reply does not count.
  */
 inline bool operator==(const Command& left, const Command& right) {
     return std::tie(left.domain, left.service, left.entity, left.data) ==
@@ -76,7 +79,7 @@ inline bool operator!=(const Command& left, const Command& right) {
 }
 
 /**
- * @brief JSON conversion for printing commands and building them from model output.
+ * @brief JSON conversion of the service call for printing and for reading model output.
  */
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Command, domain, service, entity, data)
 

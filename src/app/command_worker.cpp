@@ -16,7 +16,7 @@ using std::string;
 
 void logParsed(const std::optional<Commands::Command>& command) {
     if(command) {
-        spdlog::info("Command recognized: {}", json(*command).dump());
+        spdlog::info("Command recognized: {}{}", json(*command).dump(), command->reply.empty() ? "" : " (reply: " + command->reply + ")");
     } else {
         spdlog::info("No command recognized");
     }
@@ -140,6 +140,8 @@ void CommandWorker::handle(Samples utterance) {
     if(command) {
         auto result = executor.execute(*command);
         logResult(result, false);
-        speechService.speak(!result.reply.empty() ? result.reply : result.success ? "Command sent, sir" : "Command failed, sir.");
+        // An executor's answer beats the parser's wording, which is only an acknowledgement.
+        const string acknowledgement = command->reply.empty() ? "Command sent, sir" : command->reply;
+        speechService.speak(!result.reply.empty() ? result.reply : result.success ? acknowledgement : "Command failed, sir.");
     }
 }

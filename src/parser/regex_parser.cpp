@@ -116,6 +116,29 @@ optional<json> fillTemplate(const json& body, const json& captured) {
 }
 
 /**
+ * @brief Fill a reply template's "{slot}" references from captured words.
+ * @return Reply, or "" when it refers to a slot this match did not capture as a word.
+ */
+string fillReply(const string& reply, const json& captured) {
+    static const regex reference(R"(\{([a-z_]+)\})");
+    string filled;
+    auto copied = reply.cbegin();
+
+    for(std::sregex_iterator match(reply.begin(), reply.end(), reference), end; match != end; ++match) {
+        const auto value = captured.find((*match)[1].str());
+
+        if(value == captured.end() || !value->is_string()) {
+            return "";
+        }
+
+        filled.append(copied, (*match)[0].first).append(value->get<string>());
+        copied = (*match)[0].second;
+    }
+
+    return filled.append(copied, reply.cend());
+}
+
+/**
  * @brief Build the command one pattern produces for normalized text.
  * @param[in] deviceless Whether the rule's service acts on no device, so no device is resolved.
  * @return Command, or nullopt when the pattern does not match, a value is invalid, or the device
@@ -139,11 +162,11 @@ optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const s
 
     // A relative rule with a spoken amount ("up by ten") carries it for the executor to resolve.
     if(rule.relative && captured->contains("value")) {
-        return Command{rule.domain, rule.service, *entity, {{"amount", captured->at("value")}}};
+        return Command{rule.domain, rule.service, *entity, {{"amount", captured->at("value")}}, fillReply(rule.reply, *captured)};
     }
 
     const auto data = fillTemplate(rule.body, *captured);
-    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data}) : nullopt;
+    return data ? optional<Command>(Command{rule.domain, rule.service, *entity, *data, fillReply(rule.reply, *captured)}) : nullopt;
 }
 } // namespace
 

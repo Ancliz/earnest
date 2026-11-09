@@ -232,6 +232,7 @@ rules:
 - id: media-volume-mute-26
   domain: media_player
   service: volume_mute
+  reply: 'Unmuted.'
   regex: '(?:unmute|un mute)(?: (?:the )?(?:volume|audio|sound))?(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body:
@@ -239,6 +240,7 @@ rules:
 - id: media-volume-mute-27
   domain: media_player
   service: volume_mute
+  reply: 'Muted.'
   regex: '(?:mute|silence)(?: (?:the )?(?:volume|audio|sound))?(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body:
@@ -246,6 +248,7 @@ rules:
 - id: media-media-play-28
   domain: media_player
   service: media_play
+  reply: 'Playing.'
   # "play ... on <speaker>" moves Spotify playback instead (spotify-cast), so these take only in/for.
   regex: '(?:play|resume|unpause|continue)(?: (?:the )?(?:music|audio|playback))?(?: (?:in |for )?(?!on )(.+))?'
   device_group: 1
@@ -253,24 +256,28 @@ rules:
 - id: media-media-pause-29
   domain: media_player
   service: media_pause
+  reply: 'Paused.'
   regex: '(?:pause|paus)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body: {}
 - id: media-media-stop-30
   domain: media_player
   service: media_stop
+  reply: 'Stopped.'
   regex: 'stop(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body: {}
 - id: media-media-play-pause-31
   domain: media_player
   service: media_play_pause
+  reply: 'Toggling playback.'
   regex: '(?:toggle|play pause)(?: (?:the )?(?:music|audio|playback))?(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body: {}
 - id: media-media-next-track-32
   domain: media_player
   service: media_next_track
+  reply: 'Next track.'
   regex: '(?:skip to (?:the )?next(?: (?:song|track))?|next(?: (?:song|track))?|skip(?: (?:this|the))?(?: (?:song|track))?)(?:
     (?:on |in |for )?(.+))?'
   device_group: 1
@@ -278,48 +285,56 @@ rules:
 - id: media-media-previous-track-33
   domain: media_player
   service: media_previous_track
+  reply: 'Previous track.'
   regex: '(?:previous(?: (?:song|track))?|go back(?: (?:a|one) (?:song|track))?)(?: (?:on |in |for )?(.+))?'
   device_group: 1
   body: {}
 - id: media-turn-on-34
   domain: media_player
   service: turn_on
+  reply: 'Turning on {device}.'
   regex: '(?:turn|switch|power) on(?: (.+))?'
   device_group: 1
   body: {}
 - id: media-turn-off-35
   domain: media_player
   service: turn_off
+  reply: 'Turning off {device}.'
   regex: '(?:turn|switch|power) off(?: (.+))?'
   device_group: 1
   body: {}
 - id: media-turn-on-36
   domain: media_player
   service: turn_on
+  reply: 'Turning on {device}.'
   regex: (?:turn|switch|power) (.+) on
   device_group: 1
   body: {}
 - id: media-turn-off-37
   domain: media_player
   service: turn_off
+  reply: 'Turning off {device}.'
   regex: (?:turn|switch|power) (.+) off
   device_group: 1
   body: {}
 - id: media-media-pause-38
   domain: media_player
   service: media_pause
+  reply: 'Paused.'
   regex: (.+?) (?:pause|paus)
   device_group: 1
   body: {}
 - id: media-media-play-39
   domain: media_player
   service: media_play
+  reply: 'Playing.'
   regex: (.+?) (?:play|resume)
   device_group: 1
   body: {}
 - id: media-volume-mute-40
   domain: media_player
   service: volume_mute
+  reply: 'Unmuted.'
   regex: (.+?) unmute
   device_group: 1
   body:
@@ -327,6 +342,7 @@ rules:
 - id: media-volume-mute-41
   domain: media_player
   service: volume_mute
+  reply: 'Muted.'
   regex: (.+?) mute
   device_group: 1
   body:
@@ -388,6 +404,7 @@ rules:
 - id: climate-on
   domain: climate
   service: turn_on
+  reply: 'Turning on {device}.'
   phrases:
   - (turn|switch|power) on [the] {device}
   - (turn|switch|power) [the] {device} on
@@ -396,6 +413,7 @@ rules:
 - id: climate-off
   domain: climate
   service: turn_off
+  reply: 'Turning off {device}.'
   phrases:
   - (turn|switch|power) off [the] {device}
   - (turn|switch|power) [the] {device} off
@@ -403,6 +421,7 @@ rules:
 - id: light-on
   domain: light
   service: turn_on
+  reply: 'Turning on {device}.'
   phrases:
   - (turn|switch|power) on [the] {device}
   - (turn|switch|power) [the] {device} on
@@ -410,6 +429,7 @@ rules:
 - id: light-off
   domain: light
   service: turn_off
+  reply: 'Turning off {device}.'
   phrases:
   - (turn|switch|power) off [the] {device}
   - (turn|switch|power) [the] {device} off
@@ -417,6 +437,7 @@ rules:
 - id: switch-on
   domain: switch
   service: turn_on
+  reply: 'Turning on {device}.'
   phrases:
   - (turn|switch|power) on [the] {device}
   - (turn|switch|power) [the] {device} on
@@ -424,6 +445,7 @@ rules:
 - id: switch-off
   domain: switch
   service: turn_off
+  reply: 'Turning off {device}.'
   phrases:
   - (turn|switch|power) off [the] {device}
   - (turn|switch|power) [the] {device} off
@@ -431,6 +453,7 @@ rules:
 - id: fan-on
   domain: fan
   service: turn_on
+  reply: 'Turning on {device}.'
   phrases:
   - (turn|switch|power) on [the] {device}
   - (turn|switch|power) [the] {device} on
@@ -438,6 +461,7 @@ rules:
 - id: fan-off
   domain: fan
   service: turn_off
+  reply: 'Turning off {device}.'
   phrases:
   - (turn|switch|power) off [the] {device}
   - (turn|switch|power) [the] {device} off
@@ -463,6 +487,7 @@ rules:
 - id: spotify-cast
   domain: spotify
   service: cast
+  reply: 'Casting to {device}.'
   phrases:
   - (cast|switch|move|transfer|send|put) [the] [(music|playback|song|spotify)] (to|on|onto) [the] {device}
   - play [the] [(music|spotify)] (on|through) [the] {device}
