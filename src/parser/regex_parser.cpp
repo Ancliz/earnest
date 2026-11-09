@@ -121,6 +121,7 @@ optional<json> fillTemplate(const json& body, const json& captured) {
  */
 string fillReply(const string& reply, const json& captured) {
     static const regex reference(R"(\{([a-z_]+)\})");
+    static const regex firstPerson(R"(\bmy\b)");
     string filled;
     auto copied = reply.cbegin();
 
@@ -131,7 +132,9 @@ string fillReply(const string& reply, const json& captured) {
             return "";
         }
 
-        filled.append(copied, (*match)[0].first).append(value->get<string>());
+        // The reply speaks to the user, so a device they called "my phone" is "your phone".
+        const auto word = (*match)[1].str() == "device" ? regex_replace(value->get<string>(), firstPerson, "your") : value->get<string>();
+        filled.append(copied, (*match)[0].first).append(word);
         copied = (*match)[0].second;
     }
 
