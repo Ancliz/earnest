@@ -171,6 +171,13 @@ int main() {
     check(parser.parse("turn up by ten", {}) == Command{"media_player", "volume_up", "", {{"amount", 0.1}}},
           "relative command keeps an empty target for the executor");
 
+    names.defaultDevice = kitchen;
+    check(target(parser.parse("turn it up", names)) == kitchen, "\"it\" means the default device");
+    check(target(parser.parse("pause it", names)) == kitchen, "for any media command");
+    check(target(parser.parse("stop", names)) == kitchen, "a bare command uses it too");
+    names.defaultDevice.clear();
+    check(!parser.parse("pause it", names), "\"it\" with nothing to refer to isn't sent to the executor");
+
     Context ambiguous;
     ambiguous.devices = {device("media_player.a", "kitchan"), device("media_player.b", "kitchon")};
     check(!parser.parse("pause kitchen", ambiguous),

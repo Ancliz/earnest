@@ -93,6 +93,21 @@ inline bool operator!=(const Command& left, const Command& right) {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Command, domain, service, entity, data)
 
 /**
+ * @brief An earlier request in this conversation and what became of it.
+ */
+struct PastRequest {
+
+    /// The words of the request.
+    string request;
+
+    /// The command it became, as sent.
+    Command command;
+
+    /// Whether the command worked.
+    bool succeeded = false;
+};
+
+/**
  * @brief What a parser may refer to while interpreting text.
  */
 struct Context {
@@ -103,8 +118,11 @@ struct Context {
     /// Services the devices offer, as discovered alongside them.
     ServiceCatalogue services;
 
-    /// Entity used when the text names no device; ignored outside its own domain.
+    /// Entity meant when the text names no device or says "it"; applies in any domain the physical device is in.
     string defaultDevice;
+
+    /// Recent requests, oldest first, for parsers that can read a conversation.
+    std::vector<PastRequest> history;
 
     /// Room the request came from, which settles names that fit several devices; "" when unknown.
     string room;

@@ -222,7 +222,21 @@ Resolver::Resolver(const Registry& registry, const Context& context)
 }
 
 string Resolver::defaultIn(const string& domain) const {
-    return defaultDevice.compare(0, domain.size() + 1, domain + ".") == 0 ? defaultDevice : "";
+    if(defaultDevice.compare(0, domain.size() + 1, domain + ".") == 0) {
+        return defaultDevice;
+    }
+
+    // A cast targets a Spotify entity, but "turn it up" needs the same speaker's media player.
+    for(const auto& device : known) {
+        const auto inDomain = device.entities.find(domain);
+        const auto holds = [&](const auto& entry) { return std::find(entry.second.begin(), entry.second.end(), defaultDevice) != entry.second.end(); };
+
+        if(inDomain != device.entities.end() && std::any_of(device.entities.begin(), device.entities.end(), holds)) {
+            return inDomain->second.front();
+        }
+    }
+
+    return "";
 }
 
 vector<const Resolver::Known*> Resolver::closestNames(const string& name, const string& domain, bool allowEdits) const {

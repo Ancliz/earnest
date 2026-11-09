@@ -16,7 +16,7 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
   while a command runs. While the worker is speaking it drops what it hears, then ignores the
   microphone until the room has been quiet for the silence period, so replies aren't heard as speech.
 - **Worker thread** (`CommandWorker`): moves through idle, transcribing, parsing, executing and
-  speaking stages, recording each request as a `Exchange`. It transcribes, parses and executes each utterance in
+  speaking stages, recording each request as an `Exchange`. `ShortTermMemory` keeps the last device commanded for five minutes and offers it as `Context::defaultDevice`, so "turn it up" works. It transcribes, parses and executes each utterance in
   order, and reloads the configuration files every 5 seconds while idle and before each command. It is the only thread that
   touches the transcriber, parser, executor and configuration, so none of them need locks.
   At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes

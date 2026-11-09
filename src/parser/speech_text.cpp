@@ -129,6 +129,11 @@ vector<string> nameWords(string name) {
     return {std::istream_iterator<string>(stream), {}};
 }
 
+bool refersBack(const string& name) {
+    static const regex reference("it|that|this|them|that one|this one|music|sound|audio|volume");
+    return std::regex_match(name, reference);
+}
+
 bool hasPercentSuffix(const string& text) {
     return std::regex_search(text, percentSuffix());
 }

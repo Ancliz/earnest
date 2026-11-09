@@ -144,8 +144,9 @@ string fillReply(const string& reply, const json& captured) {
 /**
  * @brief The entity a captured device name means.
  *
- * With no name, the default device is used; a media command may also go on with an empty entity
- * for the executor to reject.
+ * With no name, or one like "it", the default device is used. A media command naming nothing may
+ * also go on with an empty entity for the executor to reject; "it" with nothing to mean is left to
+ * the next parser.
  *
  * @return Entity ID, or nullopt when the name is unknown, ambiguous, or spans more than one command.
  */
@@ -153,9 +154,9 @@ optional<string> capturedDevice(const Home::Resolver& devices, const string& spo
     static const regex compound(R"(\b(then|but|to|by)\b)");
     const auto name = Grammar::normalizeName(spoken);
 
-    if(name.empty()) {
+    if(name.empty() || Grammar::refersBack(name)) {
         const auto fallback = devices.defaultIn(domain);
-        return !fallback.empty() || domain == "media_player" ? optional<string>(fallback) : nullopt;
+        return !fallback.empty() || (name.empty() && domain == "media_player") ? optional<string>(fallback) : nullopt;
     } else if(std::regex_search(name, compound) || name.size() > 160) {
         return nullopt;
     }

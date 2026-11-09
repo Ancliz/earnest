@@ -10,6 +10,7 @@
 #include "speech/transcriber.hpp"
 #include "speech/synthesiser.hpp"
 #include "exchange.hpp"
+#include "short_term_memory.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -110,6 +111,9 @@ private:
 
     /// Current stage; read by the capture thread.
     std::atomic<Stage> stage{Stage::Idle};
+
+    /// The device follow-ups refer to; only the worker thread touches it.
+    ShortTermMemory memory;
 
     /// Told about each finished exchange; may be empty.
     ExchangeObserver observer;

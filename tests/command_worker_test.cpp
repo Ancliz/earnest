@@ -176,6 +176,53 @@ public:
 };
 
 /**
+ * @brief Commands light.<text>, noting which device it was told each request could mean by "it".
+ */
+class FollowUpParser final : public Commands::Parser {
+public:
+    vector<string> remembered;
+    vector<size_t> historySizes;
+
+    void configure(const json&) override {}
+
+    Commands::ParseResult parse(const string& text, const Context& context) override {
+        remembered.push_back(context.defaultDevice);
+        historySizes.push_back(context.history.size());
+        return text == "nothing" ? Commands::ParseResult() : Commands::ParseResult(Command{"light", "turn_on", text == "deviceless" ? "" : "light." + text, json::object()});
+    }
+};
+
+/**
+ * @brief A parser that has heard these requests in turn, with what it was told at each.
+ */
+FollowUpParser afterRequests(const vector<string>& heard) {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = heard;
+    FollowUpParser parser;
+    RecordingExecutor executor;
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    SilentSynthesiser synthesiser;
+    SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+
+    {
+        std::atomic<size_t> finished{0};
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "", [&](const Exchange&) { ++finished; });
+
+        // One at a time, as the worker only keeps a few waiting.
+        for(size_t index = 0; index < heard.size(); ++index) {
+            worker.submit(utterance(index));
+
+            while(finished <= index) {
+                std::this_thread::sleep_for(milliseconds(1));
+            }
+        }
+    }
+
+    return parser;
+}
+
+/**
  * @brief The vocabulary after one command, starting from "old", when discovery finds the given devices.
  */
 vector<string> vocabularyAfterCommand(Commands::Devices devices) {
@@ -308,6 +355,35 @@ int main() {
     const auto [exchange, spokeDuring] = observeExchange("kitchen");
     check(exchange.request == "kitchen" && exchange.parsed && exchange.result && exchange.result->success && !exchange.spoken.empty(), "an exchange records the request, command, outcome and reply");
     check(spokeDuring, "the worker reports speaking only during playback");
+    const auto followed = afterRequests({"a", "b", "deviceless", "nothing", "c"});
+    check(followed.remembered == vector<string>{"", "light.a", "light.b", "light.b", "light.b"}, "the last device commanded is offered to the next request, and requests without one don't replace it");
+    check(followed.historySizes == vector<size_t>{0, 1, 2, 3, 3}, "the worker passes the conversation to the parser, which only holds commands");
+
+    const auto at = [](int seconds) { return std::chrono::steady_clock::time_point(std::chrono::seconds(seconds)); };
+    const Command lamp{"light", "turn_on", "light.lamp", json::object()};
+    Exchange done;
+    done.heardAt = at(1000);
+    done.result = Commands::Result{true, "", lamp};
+    ShortTermMemory memory;
+    check(memory.recall(at(1000)).empty(), "nothing is remembered at first");
+    done.result->success = false;
+    memory.remember(done);
+    check(memory.recall(at(1001)).empty(), "a failed command isn't remembered");
+    done.result->success = true;
+    memory.remember(done);
+    check(memory.recall(at(1299)) == "light.lamp", "a device is remembered for a few minutes");
+    check(memory.recall(at(1300)).empty(), "and then forgotten");
+    check(memory.recent(at(1299)).size() == 2 && memory.recent(at(1299))[1].succeeded && memory.recent(at(1300)).empty(), "requests expire too");
+    done.result->success = false;
+    done.request = "failed one";
+    memory.remember(done);
+    check(memory.recent(at(1001)).size() == 3 && !memory.recent(at(1001))[2].succeeded && memory.recall(at(1001)) == "light.lamp", "a failure is part of the conversation but doesn't become \"it\"");
+
+    for(int request = 0; request < 6; ++request) {
+        memory.remember(done);
+    }
+
+    check(memory.recent(at(1001)).size() == 4, "only the last few requests are kept");
     check(sayRefusal("q800 isn't a spotify device") == vector<string>{"q800 isn't a spotify device, sir."}, "a refusal says what went wrong");
     check(sayRefusal("I'm sorry sir, I can't.") == vector<string>{"I'm sorry sir, I can't."}, "a reason already addressing sir is said as written");
     check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");

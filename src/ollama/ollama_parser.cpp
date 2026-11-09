@@ -132,15 +132,35 @@ string domainWords(string domain) {
  *
  * The heard words must occur in the request. The model chooses the domain and service well but
  * often the wrong device within it, so the resolver's choice replaces the model's, which only
- * settles ties. A request naming no device may only target the context's default device.
+ * settles ties. Words pointing back are settled here, not by the model, which often picks the wrong
+ * earlier device: "it" is the context's default device, or the latest in the conversation of this
+ * domain, and "the other one" the latest that isn't the default. An empty heard can't move a
+ * command the request aimed elsewhere.
  *
  * @return Why no device is backed by the request, in words fit to say aloud, or "" once command.entity names one.
  */
 string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const Home::Resolver& resolver) {
     using Outcome = Home::Resolution::Outcome;
 
-    if(heard.empty()) {
-        return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "You didn't name a device";
+    static const regex otherDevice("\\b(?:other|same)\\b");
+    static const regex pointer("\\b(?:it|that|this|them|other|same|again|music|sound|audio|volume)\\b");
+    const auto remembered = resolver.defaultIn(command.domain);
+    const bool other = regex_search(heard, otherDevice);
+    const bool blankButMeant = heard.empty() && (command.entity.empty() || command.entity == remembered || regex_search(Grammar::normalizeText(request), pointer));
+
+    if(other || blankButMeant || Grammar::refersBack(heard)) {
+        command.entity = other ? "" : remembered;
+
+        // Newest first, so "the other one" is the last device in this domain that isn't the current one.
+        for(auto past = context.history.rbegin(); command.entity.empty() && past != context.history.rend(); ++past) {
+            if(past->command.domain == command.domain && !(other && past->command.entity == remembered)) {
+                command.entity = past->command.entity;
+            }
+        }
+
+        return !command.entity.empty() ? "" : other ? "I didn't catch which device you meant" : "You didn't name a device";
+    } else if(heard.empty()) {
+        return "You didn't name a device";
     } else if(!inRequest(heard, request)) {
         return "I didn't catch which device you meant";
     }
@@ -248,15 +268,33 @@ Offer describeOffer(const Context& context, const Home::Registry& registry) {
 }
 
 /**
- * @brief The system and user messages for a request.
+ * @brief The conversation so far, as prompt text; "" when there is none.
  */
-json buildMessages(const string& request, const Offer& offer) {
+string describeHistory(const vector<Commands::PastRequest>& history) {
+    string text;
+
+    for(const auto& past : history) {
+        text += json(past.request).dump() + " -> " + past.command.domain + "." + past.command.service;
+        text += (past.command.entity.empty() ? "" : " on " + past.command.entity) + (past.succeeded ? "; " : " (failed); ");
+    }
+
+    return text.empty() ? "" : " Earlier requests, oldest first: " + text + "When this request points back with words like \"it\" or "
+                               "\"the other one\", set heard to those words and entity to the device meant, the latest unless it says otherwise.";
+}
+
+/**
+ * @brief The system and user messages for a request.
+ *
+ * The conversation goes last in the system message, so the unchanging part stays a cacheable prefix.
+ */
+json buildMessages(const string& request, const Offer& offer, const vector<Commands::PastRequest>& history) {
     return {{{"role", "system"},
              {"content", string(instructions) + examples +
                              "Services with their allowed and required data fields: " + offer.services.dump() +
                              ". Devices: " + offer.devices.dump() +
                              ". A service's description says how people ask for it; prefer the service whose description "
-                             "matches the wording. If no service fits the request, return empty strings."}},
+                             "matches the wording. If no service fits the request, return empty strings." +
+                             describeHistory(history)}},
             {{"role", "user"}, {"content", request}}};
 }
 
@@ -402,7 +440,7 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
     const auto offer = describeOffer(context, registry);
 
     try {
-        const auto reply = client.chat(buildMessages(request, offer), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
+        const auto reply = client.chat(buildMessages(request, offer, context.history), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");

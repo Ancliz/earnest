@@ -122,7 +122,7 @@ public:
     Resolver(const Registry& registry, const Commands::Context& context);
 
     /**
-     * @brief The context's default device if it belongs to the domain, otherwise "".
+     * @brief The context's default device, or the same physical device's entity in this domain, otherwise "".
      */
     string defaultIn(const string& domain) const;
 

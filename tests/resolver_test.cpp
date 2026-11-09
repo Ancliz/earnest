@@ -55,6 +55,13 @@ int main() {
     check(registry.aliasesOf("spotify.abc") == std::vector<string>({"big speaker", "sound system", "sound bar"}), "aliases include the physical device's");
     check(registry.aliasesOf("media_player.q990b") == registry.aliasesOf("spotify.abc"), "every entity of a device has the same aliases");
 
+    Context following = context;
+    following.defaultDevice = "spotify.abc";
+    const Resolver follower(registry, following);
+    check(follower.defaultIn("spotify") == "spotify.abc", "the default device is used in its own domain");
+    check(follower.defaultIn("media_player") == "media_player.q990b", "and reaches the same physical device in another");
+    check(follower.defaultIn("light").empty(), "but not a domain the device isn't in");
+
     Context spotifyGone({device("media_player.q990b", "Q990B")});
     check(Resolver(registry, spotifyGone).resolve("big speaker", "media_player").entity == "media_player.q990b", "an absent entity doesn't take the device with it");
     check(Resolver(registry, Context()).resolve("sound bar", "media_player").outcome == Outcome::Unknown, "a device with no entity present is unknown");

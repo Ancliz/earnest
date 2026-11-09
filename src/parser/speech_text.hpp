@@ -33,6 +33,11 @@ string normalizeText(const string& text);
 string normalizeName(const string& name);
 
 /**
+ * @brief Whether a normalized device name just points at what was being talked about, like "it" or "the music".
+ */
+bool refersBack(const string& name);
+
+/**
  * @brief Words of a normalized name; underscores count as spaces, so entity IDs split too.
  */
 std::vector<string> nameWords(string name);

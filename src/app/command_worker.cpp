@@ -177,7 +177,10 @@ void CommandWorker::handle(Queued utterance) {
 
     // Startup may have run before the servers were up, and devices come and go.
     learnDeviceNames(transcriber, devices);
-    exchange.parsed = parser.parse(*text, {std::move(devices), executor.discoverServices()});
+    Commands::Context context(std::move(devices), executor.discoverServices());
+    context.defaultDevice = memory.recall(exchange.heardAt);
+    context.history = memory.recent(exchange.heardAt);
+    exchange.parsed = parser.parse(*text, context);
     logParsed(exchange.parsed);
 
     if(exchange.parsed) {
@@ -193,6 +196,8 @@ void CommandWorker::handle(Queued utterance) {
         enter(Stage::Speaking);
         say(speech, exchange.spoken);
     }
+
+    memory.remember(exchange);
 
     if(observer) {
         observer(exchange);
