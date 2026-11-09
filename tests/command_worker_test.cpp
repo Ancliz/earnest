@@ -141,6 +141,53 @@ public:
 };
 
 /**
+ * @brief Never finds a command, and gives the configured reason.
+ */
+class RefusingParser final : public Commands::Parser {
+public:
+    string reason;
+
+    void configure(const json&) override {}
+    std::optional<Command> parse(const string&, const Context&) override { return std::nullopt; }
+    string failureReason() const override { return reason; }
+};
+
+/**
+ * @brief Records what it was asked to say.
+ */
+class RecordingSynthesiser final : public Speech::Synthesiser {
+public:
+    vector<string> said;
+
+    Audio::Buffer generate(std::string_view text) override {
+        said.emplace_back(text);
+        return {{}, 16000, 1};
+    }
+};
+
+/**
+ * @brief What the worker says when a parser refuses with the given reason.
+ */
+vector<string> sayRefusal(const string& reason) {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = {"a"};
+    RefusingParser parser;
+    parser.reason = reason;
+    RecordingExecutor executor;
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    RecordingSynthesiser synthesiser;
+    SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+
+    {
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "");
+        worker.submit(utterance(0));
+    }
+
+    return synthesiser.said;
+}
+
+/**
  * @brief Run texts through a fresh worker and return the entities it executed.
  */
 vector<string> runScript(const vector<string>& texts, const string& wakeWord = "") {
@@ -170,6 +217,11 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
  * @brief Verify ordering, draining, non-blocking submission, backlog limits, wake words, and failure recovery.
  */
 int main() {
+    check(sayRefusal("q800 isn't a spotify device") == vector<string>{"q800 isn't a spotify device, sir."}, "a refusal says what went wrong");
+    check(sayRefusal("I'm sorry sir, I can't.") == vector<string>{"I'm sorry sir, I can't."}, "a reason already addressing sir is said as written");
+    check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");
+    check(sayRefusal("").empty(), "speech the parser has no complaint about stays silent");
+
     const Command light{"light", "turn_on", "light.a", json::object(), "Turning it on."};
     const Command volume{"media_player", "volume_set", "media_player.a", {{"volume_level", 0.3}}, "Louder."};
     check(spokenReply(light, {true, "", light}) == "Turning it on.", "the parser's wording is said on success");

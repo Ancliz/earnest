@@ -183,6 +183,14 @@ bool inRequest(const string& heard, const string& request) {
 }
 
 /**
+ * @brief A domain as it would be said aloud, such as "media player".
+ */
+string domainWords(string domain) {
+    std::replace(domain.begin(), domain.end(), '_', ' ');
+    return domain;
+}
+
+/**
  * @brief Point the command at the device the request names, or say why it names none.
  *
  * The heard words must occur in the request. The model chooses the domain and service well but
@@ -191,13 +199,13 @@ bool inRequest(const string& heard, const string& request) {
  * domain matching more of the words means the model chose the wrong domain. A request naming no
  * device may only target the context's default device.
  *
- * @return Why no device is backed by the request, or "" once command.entity names one.
+ * @return Why no device is backed by the request, in words fit to say aloud, or "" once command.entity names one.
  */
 string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const json& aliases) {
     if(heard.empty()) {
-        return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "no device named";
+        return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "You didn't name a device";
     } else if(!inRequest(heard, request)) {
-        return "\"" + heard + "\" is not in the request";
+        return "I didn't catch which device you meant";
     }
 
     const auto heardWords = words(heard);
@@ -230,11 +238,11 @@ string groundDevice(const string& heard, const string& request, Command& command
     const auto chosen = std::find_if(best.begin(), best.end(), [&](const Device* device) { return device->entityId == command.entity; });
 
     if(bestScore == 0) {
-        return "\"" + heard + "\" does not sound like any " + command.domain + " device";
+        return "I can't find a " + domainWords(command.domain) + " device called " + heard;
     } else if(otherScore > bestScore || otherCloseScore > closeScore) {
-        return "\"" + heard + "\" sounds more like a device outside " + command.domain;
+        return heard + " isn't a " + domainWords(command.domain) + " device";
     } else if(chosen == best.end() && best.size() > 1) {
-        return "\"" + heard + "\" matches more than one " + command.domain + " device";
+        return heard + " matches more than one " + domainWords(command.domain) + " device";
     } else if(chosen == best.end()) {
         spdlog::debug("Correcting the model's device {} to {}", command.entity, best[0]->entityId);
         command.entity = best[0]->entityId;
@@ -450,6 +458,7 @@ void OllamaParser::configure(const json& configuration) {
 }
 
 std::optional<Command> OllamaParser::parse(const string& text, const Context& context) {
+    failure.clear();
     const auto request = tidy(text);
 
     if(request.empty()) {
@@ -475,6 +484,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
             if(!unbacked.empty()) {
                 spdlog::warn("Rejecting model's device choice: {}", unbacked);
+                failure = unbacked;
                 return nullopt;
             }
         } else {
@@ -485,12 +495,14 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         applyVolumeDirection(command, request);
 
         if(!convertPercentages(command, request)) {
+            failure = "That number doesn't match what you said";
             return nullopt;
         }
 
         return command;
     } catch(const std::exception& error) {
         spdlog::error("Ollama parse failed: {}", error.what());
+        failure = "I'm sorry sir, I'm having a hard time thinking at the moment.";
         return nullopt;
     }
 }

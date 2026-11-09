@@ -8,7 +8,17 @@
 #include "commands/command.hpp"
 
 #include <cmath>
+#include <regex>
 #include <string>
+
+/**
+ * @brief The words for a request that produced no command.
+ * @param[in] reason The parser's explanation; one already addressing "sir" is said as written.
+ */
+inline std::string spokenFailure(const std::string& reason) {
+    static const std::regex addressed("\\bsir\\b", std::regex::icase);
+    return std::regex_search(reason, addressed) ? reason : reason + ", sir.";
+}
 
 /**
  * @brief The words for a finished command.

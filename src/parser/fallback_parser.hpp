@@ -49,4 +49,9 @@ public:
 
         return second.parse(text, context);
     }
+
+    /**
+     * @brief The second parser's reason, as it is the last one asked.
+     */
+    Commands::string failureReason() const override { return second.failureReason(); }
 };

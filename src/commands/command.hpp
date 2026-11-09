@@ -150,6 +150,12 @@ public:
      * @return The single command the text asks for, or nullopt when unsupported or ambiguous.
      */
     virtual std::optional<Command> parse(const string& text, const Context& context) = 0;
+
+    /**
+     * @brief Why the last parse found no command, in words fit to say aloud.
+     * @return The reason, or "" when the text simply wasn't a command.
+     */
+    virtual string failureReason() const { return ""; }
 };
 
 /**

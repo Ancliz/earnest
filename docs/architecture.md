@@ -29,7 +29,7 @@ implementations.
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
 | `Speech::Synthesiser` | `generate(text)` | `ChatterboxSynthesiser` (`CHATTERBOX_URL`, `CHATTERBOX_VOICE`) |
 | `Audio::Player` | `play(buffer)` | `PortAudioPlayer` |
-| `Commands::Parser` | `configure(config)`, `parse(text, context)` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
+| `Commands::Parser` | `configure(config)`, `parse(text, context)`, `failureReason()` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
 A `Commands::Command` is `{domain, service, entity, data}`, plus an optional spoken `reply`
@@ -98,6 +98,8 @@ so the parser and executor never disagree.
 - Parsing, `validateCommand`, and `controllableDevices` are pure.
 - `discoverDevices()`, `discoverServices()` and `preview()` make read-only HTTP requests.
 - Only `execute()` changes device state: one POST, never retried.
+- A request the parser refuses with a reason, such as a device it can't find, is said aloud. Speech
+  no parser objects to, which has no reason, stays silent.
 - After `execute()`, the worker says the outcome, which blocks it until playback ends. A speech
   failure is logged and never affects the command, which has already run.
 - Constructors acquire resources: the microphone starts capture and Whisper loads its

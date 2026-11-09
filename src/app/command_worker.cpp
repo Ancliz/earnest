@@ -35,6 +35,17 @@ bool logResult(const Commands::Result& result, bool preview) {
     return result.success;
 }
 
+/**
+ * @brief Say the text; by now the command has run or been refused, so a speech failure is only logged.
+ */
+void say(Speech::SpeechService& speech, const string& text) {
+    try {
+        speech.speak(text);
+    } catch(const std::exception& error) {
+        spdlog::warn("Cannot speak: {}", error.what());
+    }
+}
+
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
                              Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord)
     : transcriber(transcriber), speech(speech), parser(parser), executor(executor), configuration(configuration),
@@ -135,14 +146,10 @@ void CommandWorker::handle(Samples utterance) {
     logParsed(command);
 
     if(command) {
-        auto result = executor.execute(*command);
+        const auto result = executor.execute(*command);
         logResult(result, false);
-
-        // The command has already run, so a speech failure is reported as just that.
-        try {
-            speech.speak(spokenReply(*command, result));
-        } catch(const std::exception& error) {
-            spdlog::warn("Cannot speak: {}", error.what());
-        }
+        say(speech, spokenReply(*command, result));
+    } else if(const auto reason = parser.failureReason(); !reason.empty()) {
+        say(speech, spokenFailure(reason));
     }
 }
