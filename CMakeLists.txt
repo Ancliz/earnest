@@ -46,7 +46,7 @@ target_link_libraries(app-settings PUBLIC configuration spdlog::spdlog)
 add_library(spotify-executor src/spotify/spotify.cpp)
 target_link_libraries(spotify-executor PUBLIC commands spdlog::spdlog Threads::Threads)
 
-add_library(executor-router src/app/executor_router.cpp)
+add_library(executor-router src/commands/executor_router.cpp)
 target_link_libraries(executor-router PUBLIC commands spdlog::spdlog)
 
 add_library(command-worker src/app/command_worker.cpp)

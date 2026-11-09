@@ -146,8 +146,8 @@ Every class, type, function and method has a Doxygen comment. With Doxygen insta
 - `src/speech/`: the transcriber interface and Whisper implementation.
 - `src/ollama/`: the Ollama client and LLM parser.
 - `src/spotify/`: the Spotify executor, a client of the Spotify control server.
-- `src/parser/`: the regex parser, phrase rules, spoken numbers, wake word and name matching.
-- `src/commands/`: the shared command, device and service-catalogue types and interfaces.
+- `src/parser/`: the regex and fallback parsers, phrase rules, spoken numbers, wake word and name matching.
+- `src/commands/`: the shared command, device and service-catalogue types and interfaces, and the executor router.
 - `src/home_assistant/`: the Home Assistant executor, discovery and control policy.
 - `src/config/`: YAML decoding and configuration reloads.
 - `config/`: shared phrase rules, and the template for your installation file.

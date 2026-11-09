@@ -5,8 +5,8 @@
 
 #include "settings.hpp"
 #include "command_worker.hpp"
-#include "executor_router.hpp"
-#include "fallback_parser.hpp"
+#include "commands/executor_router.hpp"
+#include "parser/fallback_parser.hpp"
 #include "audio/microphone.hpp"
 #include "audio/utterance_buffer.hpp"
 #include "home_assistant/home_assistant.hpp"

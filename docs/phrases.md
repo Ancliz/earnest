@@ -129,7 +129,7 @@ const auto preview = executor->preview(*command);
 returning at most one `Commands::Command`. `RegexParser` compiles rules once and does
 no file or network access; `configure` commits only after every rule compiles.
 `OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface, and
-`FallbackParser` (`src/app/fallback_parser.hpp`) chains two parsers for the hybrid mode.
+`FallbackParser` (`src/parser/fallback_parser.hpp`) chains two parsers for the hybrid mode.
 
 `Config::Configuration` performs file reads and reloads. `reloadIfChanged()` returns
 true when changed text is applied and throws when it is rejected; every consumer then

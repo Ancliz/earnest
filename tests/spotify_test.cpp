@@ -4,7 +4,7 @@
  */
 
 #include "check.hpp"
-#include "app/executor_router.hpp"
+#include "commands/executor_router.hpp"
 #include "spotify/spotify.hpp"
 
 #include <atomic>

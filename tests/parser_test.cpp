@@ -5,7 +5,7 @@
 
 #include "check.hpp"
 #include "fixtures.hpp"
-#include "app/fallback_parser.hpp"
+#include "parser/fallback_parser.hpp"
 #include "config/configuration.hpp"
 #include "parser/device_names.hpp"
 #include "parser/regex_parser.hpp"
