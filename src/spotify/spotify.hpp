@@ -48,6 +48,30 @@ class Spotify final : public Executor {
      */
     bool becomesActive(const string& deviceId);
 
+    /**
+     * @brief Move playback to a device and start playing there.
+     * @throws std::runtime_error If the transfer fails and the device does not become active.
+     */
+    void cast(const string& deviceId);
+
+    /**
+     * @brief Say what is playing and the next few tracks.
+     * @throws std::runtime_error If the server fails.
+     */
+    string describeQueue();
+
+    /**
+     * @brief Queue the best match for a song, and say which track that was.
+     * @throws std::runtime_error If the server fails.
+     */
+    string requestSong(const string& song);
+
+    /**
+     * @brief Say how long until a queued song plays, or that it is not queued.
+     * @throws std::runtime_error If the server fails or gives no time.
+     */
+    string timeUntil(const string& song);
+
 public:
     /**
      * @brief Configure the server origin without making a request.

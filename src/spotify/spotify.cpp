@@ -176,6 +176,58 @@ bool Spotify::becomesActive(const string& deviceId) {
     return false;
 }
 
+void Spotify::cast(const string& deviceId) {
+    try {
+        send("PUT", "/transfer", {{"device_id", deviceId}, {"play", true}});
+    } catch(const std::exception& error) {
+        // Spotify can report 404 for a transfer that still goes through, so trust the device's state.
+        spdlog::debug("Transfer reported failure, checking the device: {}", error.what());
+
+        if(!becomesActive(deviceId)) {
+            throw;
+        }
+    }
+}
+
+string Spotify::describeQueue() {
+    const auto queue = get("/queue");
+    const auto& playing = queue.value("currently_playing", json());
+    const auto& next = queue.value("queue", json::array());
+    string reply = playing.is_object() ? "Playing " + describe(playing) + "." : "Nothing is playing.";
+
+    // A spoken answer stays short: name only the next few tracks.
+    for(size_t i = 0; i < next.size() && i < 3; ++i) {
+        reply += (i == 0 ? " Next: " : ", ") + describe(next[i]);
+    }
+
+    return next.empty() ? reply + " The queue is empty." : reply + ".";
+}
+
+string Spotify::requestSong(const string& song) {
+    // The server finds the best match for the description and queues it.
+    const auto queued = send("POST", "/request", {{"song", song}});
+    return "Queued " + describe(queued.value("track", json::object())) + ".";
+}
+
+string Spotify::timeUntil(const string& song) {
+    // The server matches the description against the queue; 404 means it is not queued.
+    const auto response = client.Get("/time-until", {{"song", song}}, httplib::Headers{});
+
+    if(response && response->status == 404) {
+        return "\"" + song + "\" is not in the queue.";
+    }
+
+    const auto wait = decode(response);
+    const auto ms = wait.value("ms", json());
+
+    if(!ms.is_number()) {
+        throw runtime_error("Spotify server returned no time");
+    }
+
+    const auto track = describe(wait.value("track", json::object()));
+    return ms.get<long long>() <= 0 ? track + " is playing now." : track + " plays in " + duration(ms.get<long long>()) + ".";
+}
+
 Result Spotify::execute(const Command& command) {
     auto result = preview(command);
 
@@ -184,52 +236,16 @@ Result Spotify::execute(const Command& command) {
     }
 
     try {
+        const auto song = [&] { return command.data.at("song").get<string>(); };
+
         if(command.service == "cast") {
-            const auto deviceId = command.entity.substr(command.entity.find('.') + 1);
-
-            try {
-                send("PUT", "/transfer", {{"device_id", deviceId}, {"play", true}});
-            } catch(const std::exception& error) {
-                // Spotify can report 404 for a transfer that still goes through, so trust the device's state.
-                spdlog::debug("Transfer reported failure, checking the device: {}", error.what());
-
-                if(!becomesActive(deviceId)) {
-                    throw;
-                }
-            }
+            cast(command.entity.substr(command.entity.find('.') + 1));
         } else if(command.service == "get_queue") {
-            const auto queue = get("/queue");
-            const auto& playing = queue.value("currently_playing", json());
-            const auto& next = queue.value("queue", json::array());
-            string reply = playing.is_object() ? "Playing " + describe(playing) + "." : "Nothing is playing.";
-
-            // A spoken answer stays short: name only the next few tracks.
-            for(size_t i = 0; i < next.size() && i < 3; ++i) {
-                reply += (i == 0 ? " Next: " : ", ") + describe(next[i]);
-            }
-
-            result.reply = next.empty() ? reply + " The queue is empty." : reply + ".";
+            result.reply = describeQueue();
         } else if(command.service == "request_song") {
-            // The server finds the best match for the description and queues it.
-            const auto queued = send("POST", "/request", {{"song", command.data["song"]}});
-            result.reply = "Queued " + describe(queued.value("track", json::object())) + ".";
+            result.reply = requestSong(song());
         } else {
-            // The server matches the description against the queue; 404 means it is not queued.
-            const auto response = client.Get("/time-until", {{"song", command.data["song"].get<string>()}}, httplib::Headers{});
-
-            if(response && response->status == 404) {
-                result.reply = "\"" + command.data["song"].get<string>() + "\" is not in the queue.";
-            } else {
-                const auto wait = decode(response);
-                const auto ms = wait.value("ms", json());
-
-                if(!ms.is_number()) {
-                    throw runtime_error("Spotify server returned no time");
-                }
-
-                const auto track = describe(wait.value("track", json::object()));
-                result.reply = ms.get<long long>() <= 0 ? track + " is playing now." : track + " plays in " + duration(ms.get<long long>()) + ".";
-            }
+            result.reply = timeUntil(song());
         }
     } catch(const std::exception& error) {
         result.success = false;
