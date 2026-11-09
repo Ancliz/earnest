@@ -87,7 +87,7 @@ volume_level is the spoken volume as a percentage: copy the number said, so "vol
 A service marked "device": false acts on no device, so heard and entity are "".
 reply is a few natural words to say aloud once the command succeeds, such as "Turning on the kitchen speaker."; use ""
 for a service marked "device": false, whose answer comes from the service.
-Speak to the user: their own devices are "your", so "my phone" becomes "your phone".
+Make it natural, if the device is "my phone" reply with "your phone"
 )";
 
 /// Worked examples; small models follow these more reliably than rules alone.
@@ -157,6 +157,29 @@ size_t nameScore(const vector<string>& heard, const Device& device, const json& 
 }
 
 /**
+ * @brief Whether words the model says it heard are really in the request.
+ *
+ * Small models may complete a word from the device list, writing "q990b" for "q990", so each word
+ * may also be the start of a request word or the other way round. Edit distance is too loose
+ * here, as it would let "bedroom" pass for "bathroom".
+ */
+bool inRequest(const string& heard, const string& request) {
+    if(Grammar::normalizeText(request).find(heard) != string::npos) {
+        return true;
+    }
+
+    const auto said = words(request);
+    const auto heardWords = words(heard);
+
+    return std::all_of(heardWords.begin(), heardWords.end(), [&](const string& word) {
+        return std::any_of(said.begin(), said.end(), [&](const string& other) {
+            const auto shared = std::min(word.size(), other.size());
+            return shared >= 3 && word.compare(0, shared, other, 0, shared) == 0;
+        });
+    });
+}
+
+/**
  * @brief Point the command at the device the request names, or say why it names none.
  *
  * The heard words must occur in the request. The model chooses the domain and service well but
@@ -170,7 +193,7 @@ size_t nameScore(const vector<string>& heard, const Device& device, const json& 
 string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const json& aliases) {
     if(heard.empty()) {
         return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "no device named";
-    } else if(Grammar::normalizeText(request).find(heard) == string::npos) {
+    } else if(!inRequest(heard, request)) {
         return "\"" + heard + "\" is not in the request";
     }
 
@@ -218,6 +241,184 @@ bool movesPlayback(const string& request) {
     const auto text = Grammar::normalizeText(request);
     return !regex_search(text, power) && regex_search(text, verb) && regex_search(text, place);
 }
+
+/**
+ * @brief What the model may choose from, both as prompt text and as schema limits.
+ */
+struct Offer {
+
+    /// Commandable devices with their names and aliases.
+    json devices = json::array();
+
+    /// Each offered domain's services, with their fields and descriptions.
+    json services = json::object();
+
+    /// Domains the reply may name.
+    set<string> domains;
+
+    /// Entities the reply may name.
+    set<string> entities;
+
+    /// Services the reply may name, across all offered domains.
+    set<string> serviceNames;
+};
+
+/**
+ * @brief Collect the devices and services a request may refer to.
+ */
+Offer describeOffer(const Context& context, const json& aliases) {
+    Offer offer;
+
+    // Offer only devices whose domain the catalogue can command.
+    for(const auto& device : context.devices) {
+        if(context.services.count(device.domain)) {
+            offer.devices.push_back({{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
+
+            if(aliases.contains(device.entityId)) {
+                offer.devices.back()["aliases"] = aliases[device.entityId];
+            }
+
+            offer.domains.insert(device.domain);
+            offer.entities.insert(device.entityId);
+        }
+    }
+
+    // A domain with services that need no device, such as reading a music queue, is offered regardless.
+    for(const auto& [domain, domainServices] : context.services) {
+        for(const auto& entry : domainServices) {
+            if(!entry.second.targetsEntity) {
+                offer.domains.insert(domain);
+            }
+        }
+    }
+
+    // Describe each offered domain's services by their allowed and required data fields.
+    for(const auto& domain : offer.domains) {
+        for(const auto& [service, fields] : context.services.at(domain)) {
+            auto& described = offer.services[domain][service];
+            described = {{"allowed", fields.allowed}, {"required", fields.required}};
+
+            if(!fields.targetsEntity) {
+                described["device"] = false;
+            }
+
+            if(!fields.description.empty()) {
+                described["description"] = fields.description;
+            }
+
+            offer.serviceNames.insert(service);
+        }
+    }
+
+    return offer;
+}
+
+/**
+ * @brief The system and user messages for a request.
+ */
+json buildMessages(const string& request, const Offer& offer) {
+    return {{{"role", "system"},
+             {"content", string(instructions) + examples +
+                             "Services with their allowed and required data fields: " + offer.services.dump() +
+                             ". Devices: " + offer.devices.dump() +
+                             ". A service's description says how people ask for it; prefer the service whose description "
+                             "matches the wording. If no service fits the request, return empty strings."}},
+            {{"role", "user"}, {"content", request}}};
+}
+
+/**
+ * @brief Turn a Spotify device named under the wrong domain, such as media_player.select_source, into a cast.
+ */
+void correctWrongDomain(Command& command, const string& request, const Context& context) {
+    const auto named = [&](const Device& device) { return device.entityId == command.entity; };
+    const auto target = std::find_if(context.devices.begin(), context.devices.end(), named);
+
+    if(target != context.devices.end() && target->domain == "spotify" && command.domain != "spotify" && movesPlayback(request)) {
+        spdlog::debug("Correcting the model's {}.{} to spotify.cast", command.domain, command.service);
+        command.domain = "spotify";
+        command.service = "cast";
+    }
+}
+
+/**
+ * @brief Reduce the data to the fields the service accepts, as small models often echo the device into it.
+ */
+void keepAllowedFields(Command& command, const Commands::ServiceFields& fields) {
+    if(command.data.is_null()) {
+        command.data = json::object();
+    }
+
+    for(auto field = command.data.begin(); field != command.data.end();) {
+        if(fields.allowed.count(field.key())) {
+            ++field;
+        } else {
+            spdlog::debug("Dropping unexpected data field: {}", field.key());
+            field = command.data.erase(field);
+        }
+    }
+}
+
+/**
+ * @brief Make a volume command relative when the request has a direction but no "to".
+ *
+ * Small models pick volume_set for "turn it up 3".
+ */
+void applyVolumeDirection(Command& command, const string& request) {
+    static const regex direction("\\b(up|down|louder|quieter|softer|raise|lower)\\b");
+    static const regex to("\\bto\\b");
+    static const regex downward("\\b(down|quieter|softer|lower)\\b");
+    const auto normalized = Grammar::normalizeText(request);
+    const bool relative = regex_search(normalized, direction) && !regex_search(normalized, to);
+
+    if(command.domain == "media_player" && relative && command.service.rfind("volume_", 0) == 0) {
+        const json level = command.data.value("volume_level", command.data.value("amount", json()));
+        command.service = regex_search(normalized, downward) ? "volume_down" : "volume_up";
+        command.data = level.is_number() ? json{{"amount", level}} : json::object();
+    }
+}
+
+/**
+ * @brief Whether a percentage appears in the request, or the request has no digits to compare it with.
+ *
+ * Numbers transcribed as digits must be copied exactly; small models "correct" 300 to 30.
+ */
+bool wasSpoken(double percent, const string& request) {
+    static const regex digits("\\b\\d+(\\.\\d+)?\\b"); // Standalone, so "Q990" is not a number
+    bool spoken = true;
+
+    for(std::sregex_iterator match(request.begin(), request.end(), digits), end; match != end; ++match) {
+        spoken = false;
+
+        if(std::stod(match->str()) == percent) {
+            return true;
+        }
+    }
+
+    return spoken;
+}
+
+/**
+ * @brief Convert the percentages the model copied into 0..1 levels, keeping arithmetic out of the model.
+ * @return False when a percentage was not in the request, so the command must be rejected.
+ */
+bool convertPercentages(Command& command, const string& request) {
+    for(const char* field : {"volume_level", "amount"}) {
+        if(!command.data.contains(field) || !command.data[field].is_number()) {
+            continue;
+        }
+
+        const auto percent = command.data[field].get<double>();
+
+        if(!wasSpoken(percent, request)) {
+            spdlog::warn("Rejecting {} {}: not a number in the request", field, percent);
+            return false;
+        }
+
+        command.data[field] = percent / 100;
+    }
+
+    return true;
+}
 } // namespace
 
 void OllamaParser::configure(const json& configuration) {
@@ -243,144 +444,36 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         return nullopt;
     }
 
-    json devices = json::array();
-    set<string> domains;
-    set<string> entities;
-
-    // Offer only devices whose domain the catalogue can command.
-    for(const auto& device : context.devices) {
-        if(context.services.count(device.domain)) {
-            devices.push_back({{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
-            
-            if(aliases.contains(device.entityId)) {
-                devices.back()["aliases"] = aliases[device.entityId];
-            }
-            
-            domains.insert(device.domain);
-            entities.insert(device.entityId);
-        }
-    }
-
-    // A domain with services that need no device, such as reading a music queue, is offered regardless.
-    for(const auto& [domain, domainServices] : context.services) {
-        for(const auto& entry : domainServices) {
-            if(!entry.second.targetsEntity) {
-                domains.insert(domain);
-            }
-        }
-    }
-
-    // Describe each offered domain's services by their allowed and required data fields.
-    json services = json::object();
-    set<string> serviceNames;
-
-    for(const auto& domain : domains) {
-        for(const auto& [service, fields] : context.services.at(domain)) {
-            services[domain][service] = {{"allowed", fields.allowed}, {"required", fields.required}};
-
-            if(!fields.targetsEntity) {
-                services[domain][service]["device"] = false;
-            }
-
-            if(!fields.description.empty()) {
-                services[domain][service]["description"] = fields.description;
-            }
-            serviceNames.insert(service);
-        }
-    }
-
-    const json messages = {
-        {{"role", "system"},
-         {"content", string(instructions) + examples +
-                         "Services with their allowed and required data fields: " + services.dump() +
-                         ". Devices: " + devices.dump() +
-                         ". A service's description says how people ask for it; prefer the service whose description "
-                         "matches the wording. If no service fits the request, return empty strings."}},
-        {{"role", "user"}, {"content", request}}};
+    const auto offer = describeOffer(context, aliases);
 
     try {
-        const auto reply =
-            client.chat(messages, json::array(), commandFormat(domains, serviceNames, entities));
+        const auto reply = client.chat(buildMessages(request, offer), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");
-
-        // Small models can name a Spotify device under the wrong domain, such as media_player.select_source.
-        const auto target = std::find_if(context.devices.begin(), context.devices.end(), [&](const Device& device) { return device.entityId == command.entity; });
-
-        if(target != context.devices.end() && target->domain == "spotify" && command.domain != "spotify" && movesPlayback(request)) {
-            spdlog::debug("Correcting the model's {}.{} to spotify.cast", command.domain, command.service);
-            command.domain = "spotify";
-            command.service = "cast";
-        }
-
+        correctWrongDomain(command, request, context);
         const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
         if(command.domain.empty() || !fields) {
             return nullopt;
         }
 
-        const auto unbacked = fields->targetsEntity ? groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, aliases) : "";
+        if(fields->targetsEntity) {
+            const auto unbacked = groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, aliases);
 
-        if(!fields->targetsEntity) {
-            command.entity = "";
-        } else if(!unbacked.empty()) {
-            spdlog::warn("Rejecting model's device choice: {}", unbacked);
-            return nullopt;
-        }
-
-        if(command.data.is_null()) {
-            command.data = json::object();
-        }
-
-        // Small models often echo the device into data; keep only the fields the service accepts.
-        for(auto field = command.data.begin(); field != command.data.end();) {
-            if(fields->allowed.count(field.key())) {
-                ++field;
-            } else {
-                spdlog::debug("Dropping unexpected data field: {}", field.key());
-                field = command.data.erase(field);
-            }
-        }
-
-        // Small models pick volume_set for "turn it up 3"; a direction without "to" is a relative change.
-        const regex direction("\\b(up|down|louder|quieter|softer|raise|lower)\\b");
-        const auto normalized = Grammar::normalizeText(request);
-        const bool relative = regex_search(normalized, direction) && !regex_search(normalized, regex("\\bto\\b"));
-
-        if(command.domain == "media_player" && relative && command.service.rfind("volume_", 0) == 0) {
-            const bool down = regex_search(normalized, regex("\\b(down|quieter|softer|lower)\\b"));
-            const json level = command.data.value("volume_level", command.data.value("amount", json()));
-            command.service = down ? "volume_down" : "volume_up";
-            command.data = level.is_number() ? json{{"amount", level}} : json::object();
-        }
-
-        // The model copies spoken percentages; converting them here keeps arithmetic out of the model.
-        for(const char* field : {"volume_level", "amount"}) {
-            if(!command.data.contains(field) || !command.data[field].is_number()) {
-                continue;
-            }
-
-            const auto percent = command.data[field].get<double>();
-            const regex digits("\\b\\d+(\\.\\d+)?\\b"); // Standalone, so "Q990" is not a number
-            bool spoken = true;
-
-            // Numbers transcribed as digits must be copied exactly; small models "correct" 300 to 30.
-            for(std::sregex_iterator match(request.begin(), request.end(), digits), end; match != end; ++match) {
-                spoken = false;
-
-                if(std::stod(match->str()) == percent) {
-                    spoken = true;
-                    break;
-                }
-            }
-
-            if(!spoken) {
-                spdlog::warn("Rejecting {} {}: not a number in the request", field, percent);
+            if(!unbacked.empty()) {
+                spdlog::warn("Rejecting model's device choice: {}", unbacked);
                 return nullopt;
             }
+        } else {
+            command.entity = "";
+        }
 
-            command.data[field] = percent / 100;
+        keepAllowedFields(command, *fields);
+        applyVolumeDirection(command, request);
+
+        if(!convertPercentages(command, request)) {
+            return nullopt;
         }
 
         return command;
