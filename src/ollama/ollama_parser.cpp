@@ -116,13 +116,15 @@ vector<string> words(string name) {
  * edits, so "ramp" matches "lamp" and model number "q919" matches "q990b" but "queue" misses "q800b"; a
  * three-letter start also matches, so "bedroom" matches "bed".
  */
-bool soundsLike(const string& heard, const string& name) {
+bool soundsLike(const string& heard, const string& name, bool allowEdits = true) {
     if(heard == name) {
         return true;
     } else if(heard.size() < 3 || name.size() < 3) {
         return false;
     } else if(heard.compare(0, name.size(), name) == 0 || name.compare(0, heard.size(), heard) == 0) {
         return true;
+    } else if(!allowEdits) {
+        return false;
     }
 
     const auto limit = std::min<size_t>(3, (std::max(heard.size(), name.size()) + 1) / 2);
@@ -131,8 +133,9 @@ bool soundsLike(const string& heard, const string& name) {
 
 /**
  * @brief How many heard words match a word of the device's friendly name, object ID or aliases.
+ * @param[in] allowEdits Whether a misheard word counts, rather than only a whole or partial word.
  */
-size_t nameScore(const vector<string>& heard, const Device& device, const json& aliases) {
+size_t nameScore(const vector<string>& heard, const Device& device, const json& aliases, bool allowEdits = true) {
     static const set<string> fillers = {"the", "and", "of", "to", "in", "my"};
     auto names = words(device.name);
     const auto objectId = words(device.entityId.substr(device.entityId.find('.') + 1));
@@ -146,7 +149,7 @@ size_t nameScore(const vector<string>& heard, const Device& device, const json& 
     size_t score = 0;
 
     for(const auto& word : heard) {
-        const auto matches = [&](const string& name) { return soundsLike(word, name); };
+        const auto matches = [&](const string& name) { return soundsLike(word, name, allowEdits); };
 
         if(!fillers.count(word) && std::any_of(names.begin(), names.end(), matches)) {
             ++score;
@@ -201,13 +204,22 @@ string groundDevice(const string& heard, const string& request, Command& command
     vector<const Device*> best;
     size_t bestScore = 0;
     size_t otherScore = 0;
+    size_t closeScore = 0;
+    size_t otherCloseScore = 0;
 
     for(const auto& device : context.devices) {
         const auto score = nameScore(heardWords, device, aliases);
+        const auto close = nameScore(heardWords, device, aliases, false);
 
         if(device.domain != command.domain) {
             otherScore = std::max(otherScore, score);
-        } else if(score > bestScore) {
+            otherCloseScore = std::max(otherCloseScore, close);
+            continue;
+        }
+
+        closeScore = std::max(closeScore, close);
+
+        if(score > bestScore) {
             best = {&device};
             bestScore = score;
         } else if(score == bestScore) {
@@ -219,7 +231,7 @@ string groundDevice(const string& heard, const string& request, Command& command
 
     if(bestScore == 0) {
         return "\"" + heard + "\" does not sound like any " + command.domain + " device";
-    } else if(otherScore > bestScore) {
+    } else if(otherScore > bestScore || otherCloseScore > closeScore) {
         return "\"" + heard + "\" sounds more like a device outside " + command.domain;
     } else if(chosen == best.end() && best.size() > 1) {
         return "\"" + heard + "\" matches more than one " + command.domain + " device";
