@@ -49,6 +49,11 @@ UtteranceBuffer::UtteranceBuffer(float threshold, int silenceMs)
     }
 }
 
+void UtteranceBuffer::abandon() {
+    reset();
+    discardUntilSilence = true;
+}
+
 optional<Samples> UtteranceBuffer::finish() {
     optional<Samples> completed;
 

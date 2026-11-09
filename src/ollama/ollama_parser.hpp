@@ -25,9 +25,6 @@ class OllamaParser final : public Commands::Parser {
     /// Extra spoken names for entities, from the configuration's aliases.
     json aliases = json::object();
 
-    /// Why the last parse found no command; empty when there is nothing to report.
-    string failure;
-
 public:
     /**
      * @brief Configure the Ollama server and model without making a request.
@@ -42,10 +39,5 @@ public:
     /**
      * @brief Ask the model for the single command the text requests.
      */
-    std::optional<Command> parse(const string& text, const Context& context) override;
-
-    /**
-     * @brief Why the last parse rejected the model's answer, in words fit to say aloud.
-     */
-    string failureReason() const override { return failure; }
+    Commands::ParseResult parse(const string& text, const Context& context) override;
 };

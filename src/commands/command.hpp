@@ -125,6 +125,25 @@ struct Result {
 };
 
 /**
+ * @brief A parser's answer: an optional command and, when it has none, perhaps why.
+ */
+struct ParseResult : std::optional<Command> {
+    using std::optional<Command>::optional;
+
+    /// Why the request was refused, in words fit to say aloud; empty when it simply wasn't a command.
+    string refusal;
+
+    /**
+     * @brief A result with no command and a reason to give.
+     */
+    static ParseResult refused(string reason) {
+        ParseResult result;
+        result.refusal = std::move(reason);
+        return result;
+    }
+};
+
+/**
  * @brief Turns text into at most one command. Implementations never execute anything.
  */
 class Parser {
@@ -147,15 +166,9 @@ public:
      *
      * @param[in] text Transcript or typed command.
      * @param[in] context Devices and name-resolution preferences for this text.
-     * @return The single command the text asks for, or nullopt when unsupported or ambiguous.
+     * @return The single command the text asks for; otherwise empty, with a refusal if there is a reason to give.
      */
-    virtual std::optional<Command> parse(const string& text, const Context& context) = 0;
-
-    /**
-     * @brief Why the last parse found no command, in words fit to say aloud.
-     * @return The reason, or "" when the text simply wasn't a command.
-     */
-    virtual string failureReason() const { return ""; }
+    virtual ParseResult parse(const string& text, const Context& context) = 0;
 };
 
 /**

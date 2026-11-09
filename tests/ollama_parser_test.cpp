@@ -39,12 +39,22 @@ int main() {
 
     answer = turnOff;
     const auto accepted = parser.parse("turn off the q800", context);
-    check(accepted && accepted->service == "turn_off" && parser.failureReason().empty(), "a plain request is accepted");
+    check(accepted && accepted->service == "turn_off" && accepted.refusal.empty(), "a plain request is accepted");
 
     for(const auto* text : {"don't turn off the q800", "Don't turn off the Q800.", "do not turn off the q800", "never turn off the q800"}) {
-        check(!parser.parse(text, context) && !parser.failureReason().empty(), string("a negated request is refused: ") + text);
+        const auto refused = parser.parse(text, context);
+        check(!refused && !refused.refusal.empty(), string("a negated request is refused: ") + text);
     }
 
+    for(const auto* text : {"turn off the q800 then pause the q990", "turn off the q800 and pause the q990"}) {
+        const auto refused = parser.parse(text, context);
+        check(!refused && !refused.refusal.empty(), string("a compound request is refused, not half done: ") + text);
+    }
+
+    answer = {{"domain", "media_player"}, {"service", "turn_off"}, {"heard", "bed and bath q800"}, {"entity", "media_player.q800"}, {"data", json::object()}, {"reply", ""}};
+    check(parser.parse("turn off the bed and bath q800", context).has_value(), "an \"and\" inside a device name is not a compound request");
+    answer = request("rock and roll");
+    check(parser.parse("play rock and roll", context).has_value(), "an \"and\" inside a song title is not a compound request");
     answer = request("never gonna give you up");
     const auto song = parser.parse("play never gonna give you up", context);
     check(song && song->data["song"] == "never gonna give you up", "a negative word in a song title is not a refusal");

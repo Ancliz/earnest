@@ -85,7 +85,7 @@ public:
     /**
      * @brief Target the light named by the whole text.
      */
-    std::optional<Command> parse(const string& text, const Context&) override {
+    Commands::ParseResult parse(const string& text, const Context&) override {
         return Command{"light", "turn_on", "light." + text, json::object()};
     }
 };
@@ -159,8 +159,7 @@ public:
     string reason;
 
     void configure(const json&) override {}
-    std::optional<Command> parse(const string&, const Context&) override { return std::nullopt; }
-    string failureReason() const override { return reason; }
+    Commands::ParseResult parse(const string&, const Context&) override { return Commands::ParseResult::refused(reason); }
 };
 
 /**
@@ -197,6 +196,59 @@ vector<string> vocabularyAfterCommand(Commands::Devices devices) {
     }
 
     return transcriber.vocabulary;
+}
+
+/**
+ * @brief Notes whether the worker reported speaking while audio played.
+ */
+class WatchingPlayer final : public Audio::Player {
+public:
+    /// The worker to ask; set before any audio plays.
+    std::atomic<const CommandWorker*> worker{nullptr};
+
+    /// Whether the worker said it was speaking during playback.
+    std::atomic<bool> sawSpeaking{false};
+
+    void play(const Audio::Buffer&) override { sawSpeaking = worker.load()->isSpeaking(); }
+};
+
+/**
+ * @brief Run one command and report its exchange, and whether the worker reported speaking during playback.
+ */
+std::pair<Exchange, bool> observeExchange(const string& heard) {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = {heard};
+    EchoParser parser;
+    RecordingExecutor executor;
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    SilentSynthesiser synthesiser;
+    WatchingPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+    Exchange seen;
+    std::atomic<bool> finished{false};
+    bool stoppedSpeaking = false;
+
+    {
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "", [&](const Exchange& exchange) {
+            seen = exchange;
+            finished = true;
+        });
+        player.worker = &worker;
+        worker.submit(utterance(0));
+
+        while(!finished) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        // The worker leaves the speaking stage just after telling the observer.
+        for(int i = 0; i < 2000 && worker.isSpeaking(); ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        stoppedSpeaking = !worker.isSpeaking();
+    }
+
+    return {seen, player.sawSpeaking && stoppedSpeaking};
 }
 
 /**
@@ -253,6 +305,9 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
 int main() {
     check(vocabularyAfterCommand({Commands::Device{"light.a", "Desk Lamp", "light", "on"}}) == vector<string>{"Desk Lamp"}, "each command refreshes the transcriber's device names");
     check(vocabularyAfterCommand({}) == vector<string>{"old"}, "an outage does not erase the learned device names");
+    const auto [exchange, spokeDuring] = observeExchange("kitchen");
+    check(exchange.request == "kitchen" && exchange.parsed && exchange.result && exchange.result->success && !exchange.spoken.empty(), "an exchange records the request, command, outcome and reply");
+    check(spokeDuring, "the worker reports speaking only during playback");
     check(sayRefusal("q800 isn't a spotify device") == vector<string>{"q800 isn't a spotify device, sir."}, "a refusal says what went wrong");
     check(sayRefusal("I'm sorry sir, I can't.") == vector<string>{"I'm sorry sir, I can't."}, "a reason already addressing sir is said as written");
     check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");

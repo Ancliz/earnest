@@ -361,15 +361,24 @@ void correctWrongDomain(Command& command, const string& request, const Context& 
 }
 
 /**
- * @brief Whether a request says not to do something, leaving free text such as a song title out of it.
+ * @brief Why a request must not run as this one command, or "" when it may.
  *
- * "Never Gonna Give You Up" is a song to queue, while "don't queue wonderwall" is a refusal.
+ * Models drop a "don't" and act on the rest, or do the first of two things and forget the other.
+ * Words the model read as a name or free text are left out, so "Never Gonna Give You Up" is a song
+ * and "bed and bath" a device. A service acting on no device can't half-finish, so "and" is fine.
  */
-bool isNegated(const Command& command, const string& request) {
+string objectionTo(const Command& command, const string& heard, const string& request, const Commands::ServiceFields& fields) {
+    static const regex joined("\\band\\b");
     auto text = Grammar::normalizeText(request);
+    vector<string> named = {Grammar::normalizeText(heard)};
 
     for(const auto& value : command.data) {
-        const auto said = value.is_string() ? Grammar::normalizeText(value.get<string>()) : string();
+        if(value.is_string()) {
+            named.push_back(Grammar::normalizeText(value.get<string>()));
+        }
+    }
+
+    for(const auto& said : named) {
         const auto found = said.empty() ? string::npos : text.find(said);
 
         if(found != string::npos) {
@@ -377,7 +386,11 @@ bool isNegated(const Command& command, const string& request) {
         }
     }
 
-    return Grammar::hasNegation(text);
+    if(Grammar::hasNegation(text)) {
+        return "I won't act on a request that says not to";
+    }
+
+    return Grammar::hasSequence(text) || (fields.targetsEntity && regex_search(text, joined)) ? "I can only do one thing at a time" : "";
 }
 
 /**
@@ -477,8 +490,7 @@ void OllamaParser::configure(const json& configuration) {
     aliases = configured;
 }
 
-std::optional<Command> OllamaParser::parse(const string& text, const Context& context) {
-    failure.clear();
+Commands::ParseResult OllamaParser::parse(const string& text, const Context& context) {
     const auto request = tidy(text);
 
     if(request.empty()) {
@@ -504,8 +516,7 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
             if(!unbacked.empty()) {
                 spdlog::warn("Rejecting model's device choice: {}", unbacked);
-                failure = unbacked;
-                return nullopt;
+                return Commands::ParseResult::refused(unbacked);
             }
         } else {
             command.entity = "";
@@ -513,24 +524,22 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
 
         keepAllowedFields(command, *fields);
 
-        // The rules decline negation, but a model tends to drop the "don't" and act on the rest.
-        if(isNegated(command, request)) {
-            spdlog::warn("Rejecting negated request: {}", request);
-            failure = "I won't act on a request that says not to";
-            return nullopt;
+        const auto objection = objectionTo(command, content.value("heard", ""), request, *fields);
+
+        if(!objection.empty()) {
+            spdlog::warn("Rejecting request \"{}\": {}", request, objection);
+            return Commands::ParseResult::refused(objection);
         }
 
         applyVolumeDirection(command, request);
 
         if(!convertPercentages(command, request)) {
-            failure = "That number doesn't match what you said";
-            return nullopt;
+            return Commands::ParseResult::refused("That number doesn't match what you said");
         }
 
         return command;
     } catch(const std::exception& error) {
         spdlog::error("Ollama parse failed: {}", error.what());
-        failure = "I'm sorry sir, I'm having a hard time thinking at the moment.";
-        return nullopt;
+        return Commands::ParseResult::refused("I'm sorry sir, I'm having a hard time thinking at the moment.");
     }
 }

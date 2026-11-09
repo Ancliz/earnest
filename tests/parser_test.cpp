@@ -266,10 +266,9 @@ int main() {
      */
     struct Fixed final : Commands::Parser {
         void configure(const json&) override {}
-        std::optional<Command> parse(const string&, const Context&) override { return Command{"media_player", "media_play", "media_player.q990", json::object()}; }
+        Commands::ParseResult parse(const string&, const Context&) override { return Command{"media_player", "media_play", "media_player.q990", json::object()}; }
     } model;
     FallbackParser hybrid(parser, model);
-    check(hybrid.failureReason().empty(), "a parser with nothing to report gives no reason");
     check(hybrid.parse("add wonderwall", music) == request, "the hybrid parser prefers phrase rules");
     check(hybrid.parse("play the q990b", music)->service == "media_play", "the hybrid parser falls back when no rule decides");
 

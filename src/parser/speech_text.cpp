@@ -206,6 +206,11 @@ bool hasNegation(const string& text) {
     return std::regex_search(text, negation);
 }
 
+bool hasSequence(const string& text) {
+    static const regex sequence(R"(\b(?:then|but)\b)");
+    return std::regex_search(text, sequence);
+}
+
 bool isNonSpeech(const string& text) {
     static const regex labels(R"(\([^)]*\)|\[[^\]]*\]|\*[^*]*\*)");
     // Laughter, hums and hesitations, allowing drawn-out spellings such as "hmmm" and "uhhh".

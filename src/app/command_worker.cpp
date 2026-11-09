@@ -63,9 +63,10 @@ void say(Speech::SpeechService& speech, const string& text) {
 }
 
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                             Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord)
+                             Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord,
+                             ExchangeObserver observer)
     : transcriber(transcriber), speech(speech), parser(parser), executor(executor), configuration(configuration),
-      wakeWord(std::move(wakeWord)), thread(&CommandWorker::run, this) {}
+      wakeWord(std::move(wakeWord)), observer(std::move(observer)), thread(&CommandWorker::run, this) {}
 
 CommandWorker::~CommandWorker() {
     {
@@ -86,7 +87,7 @@ void CommandWorker::submit(Samples utterance) {
             pending.pop_front();
         }
 
-        pending.push_back(std::move(utterance));
+        pending.push_back({std::move(utterance), std::chrono::steady_clock::now()});
     }
 
     ready.notify_one();
@@ -117,6 +118,8 @@ void CommandWorker::run() {
         } catch(const std::exception& error) {
             spdlog::error("Cannot handle utterance: {}", error.what());
         }
+
+        enter(Stage::Idle);
     }
 }
 
@@ -136,8 +139,15 @@ void CommandWorker::reloadConfiguration() {
     }
 }
 
-void CommandWorker::handle(Samples utterance) {
-    const string heard = transcriber.transcribe(std::move(utterance));
+void CommandWorker::enter(Stage next) {
+    static const char* const names[] = {"idle", "transcribing", "parsing", "executing", "speaking"};
+    spdlog::trace("Worker is {}", names[static_cast<int>(next)]);
+    stage = next;
+}
+
+void CommandWorker::handle(Queued utterance) {
+    enter(Stage::Transcribing);
+    const string heard = transcriber.transcribe(std::move(utterance.samples));
 
     if(heard.find_first_not_of(" \t\r\n") == string::npos) {
         return;
@@ -157,19 +167,34 @@ void CommandWorker::handle(Samples utterance) {
         return;
     }
 
+    Exchange exchange;
+    exchange.heardAt = utterance.heardAt;
+    exchange.transcript = heard;
+    exchange.request = *text;
     reloadConfiguration();
+    enter(Stage::Parsing);
     auto devices = executor.discoverDevices();
 
     // Startup may have run before the servers were up, and devices come and go.
     learnDeviceNames(transcriber, devices);
-    const auto command = parser.parse(*text, {std::move(devices), executor.discoverServices()});
-    logParsed(command);
+    exchange.parsed = parser.parse(*text, {std::move(devices), executor.discoverServices()});
+    logParsed(exchange.parsed);
 
-    if(command) {
-        const auto result = executor.execute(*command);
-        logResult(result, false);
-        say(speech, spokenReply(*command, result));
-    } else if(const auto reason = parser.failureReason(); !reason.empty()) {
-        say(speech, spokenFailure(reason));
+    if(exchange.parsed) {
+        enter(Stage::Executing);
+        exchange.result = executor.execute(*exchange.parsed);
+        logResult(*exchange.result, false);
+        exchange.spoken = spokenReply(*exchange.parsed, *exchange.result);
+    } else if(!exchange.parsed.refusal.empty()) {
+        exchange.spoken = spokenFailure(exchange.parsed.refusal);
+    }
+
+    if(!exchange.spoken.empty()) {
+        enter(Stage::Speaking);
+        say(speech, exchange.spoken);
+    }
+
+    if(observer) {
+        observer(exchange);
     }
 }

@@ -186,9 +186,8 @@ void RegexParser::configure(const json& configuration) {
     aliases = std::move(configuredAliases);
 }
 
-optional<Command> RegexParser::parse(const string& text, const Commands::Context& context) {
+Commands::ParseResult RegexParser::parse(const string& text, const Commands::Context& context) {
     static const regex negativeNumber(R"(-\s*[0-9])");
-    static const regex sequence(R"(\b(?:then|but)\b)");
 
     if(text.empty() || text.size() > 512 || std::regex_search(text, negativeNumber)) {
         return nullopt;
@@ -196,7 +195,7 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
 
     const string normalized = Grammar::normalizeText(text);
 
-    if(Grammar::hasNegation(normalized) || std::regex_search(normalized, sequence)) {
+    if(Grammar::hasNegation(normalized) || Grammar::hasSequence(normalized)) {
         return nullopt;
     }
 
@@ -232,5 +231,5 @@ optional<Command> RegexParser::parse(const string& text, const Commands::Context
         }
     }
 
-    return chosen;
+    return chosen ? Commands::ParseResult(*chosen) : Commands::ParseResult();
 }

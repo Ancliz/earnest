@@ -88,6 +88,12 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
             continue;
         }
 
+        // What the microphone hears now is the assistant's own voice, and its echo until the room goes quiet.
+        if(worker.isSpeaking()) {
+            utterances.abandon();
+            continue;
+        }
+
         auto utterance = utterances.append(block, discontinuity);
 
         if(utterances.event() == UtteranceBuffer::Event::Discontinuity) {

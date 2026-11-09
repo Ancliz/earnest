@@ -53,6 +53,11 @@ std::optional<double> parseLevel(string text);
 bool hasNegation(const string& text);
 
 /**
+ * @brief Whether normalized text asks for one thing after another: "then" or "but".
+ */
+bool hasSequence(const string& text);
+
+/**
  * @brief Whether a transcript holds no words, only sounds.
  *
  * True when everything left after removing Whisper's sound labels ("(laughs)", "[MUSIC]",

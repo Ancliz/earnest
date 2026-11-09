@@ -9,7 +9,10 @@
 #include "config/configuration.hpp"
 #include "speech/transcriber.hpp"
 #include "speech/synthesiser.hpp"
+#include "exchange.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -50,6 +53,24 @@ void learnDeviceNames(Speech::Transcriber& transcriber, const Commands::Devices&
  * reloaded every 5 seconds while idle and before each command.
  */
 class CommandWorker {
+public:
+    /**
+     * @brief What the worker is doing right now.
+     */
+    enum class Stage { Idle, Transcribing, Parsing, Executing, Speaking };
+
+private:
+    /**
+     * @brief An utterance waiting to be handled.
+     */
+    struct Queued {
+
+        /// The audio.
+        Samples samples;
+
+        /// When it was submitted.
+        std::chrono::steady_clock::time_point heardAt;
+    };
 
     /// Utterances waiting beyond this are dropped, oldest first, so commands never run stale.
     static constexpr std::size_t maxPending = 3;
@@ -82,10 +103,16 @@ class CommandWorker {
     std::condition_variable ready;
 
     /// Submitted utterances not yet handled.
-    std::deque<Samples> pending;
+    std::deque<Queued> pending;
 
     /// Set by the destructor; the thread finishes the queue and returns.
     bool stopping = false;
+
+    /// Current stage; read by the capture thread.
+    std::atomic<Stage> stage{Stage::Idle};
+
+    /// Told about each finished exchange; may be empty.
+    ExchangeObserver observer;
 
     /// Thread running run(); declared last so it starts after every other member exists.
     std::thread thread;
@@ -103,15 +130,29 @@ class CommandWorker {
     /**
      * @brief Transcribe one utterance, check the wake word, then parse and execute its command.
      */
-    void handle(Samples utterance);
+    void handle(Queued utterance);
+
+    /**
+     * @brief Move to a stage and log it.
+     */
+    void enter(Stage next);
 
 public:
     /**
      * @brief Start the worker thread.
+     * @param[in] observer Told about each turn addressed to the assistant; may be empty.
      * @throws std::system_error If the thread cannot start.
      */
     CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                  Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord);
+                  Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord,
+                  ExchangeObserver observer = {});
+
+    /**
+     * @brief Whether the assistant is talking, so whatever the microphone hears is its own voice.
+     */
+    bool isSpeaking() const {
+        return stage == Stage::Speaking;
+    }
 
     /**
      * @brief Finish every submitted utterance, then stop the thread.

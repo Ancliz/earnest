@@ -44,6 +44,5 @@ public:
      * The first matching pattern of each domain proposes a command; differing proposals from
      * several domains make the text ambiguous.
      */
-    std::optional<Commands::Command> parse(const std::string& text,
-                                           const Commands::Context& context) override;
+    Commands::ParseResult parse(const std::string& text, const Commands::Context& context) override;
 };

@@ -41,7 +41,7 @@ public:
     /**
      * @brief The first parser's command, or else the second's.
      */
-    std::optional<Commands::Command> parse(const Commands::string& text, const Commands::Context& context) override {
+    Commands::ParseResult parse(const Commands::string& text, const Commands::Context& context) override {
         if(auto command = first.parse(text, context)) {
             spdlog::debug("Matched by a phrase rule");
             return command;
@@ -49,9 +49,4 @@ public:
 
         return second.parse(text, context);
     }
-
-    /**
-     * @brief The second parser's reason, as it is the last one asked.
-     */
-    Commands::string failureReason() const override { return second.failureReason(); }
 };

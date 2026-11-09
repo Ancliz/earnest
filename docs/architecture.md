@@ -13,8 +13,10 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
 - **Microphone capture thread** (`Microphone`): reads PortAudio into a five-second queue.
 - **Main thread** (`listen` in `main.cpp`): reads that queue, splits speech into utterances
   and submits them. It never waits on inference or the network, so speech is still heard
-  while a command runs.
-- **Worker thread** (`CommandWorker`): transcribes, parses and executes each utterance in
+  while a command runs. While the worker is speaking it drops what it hears, then ignores the
+  microphone until the room has been quiet for the silence period, so replies aren't heard as speech.
+- **Worker thread** (`CommandWorker`): moves through idle, transcribing, parsing, executing and
+  speaking stages, recording each request as a `Exchange`. It transcribes, parses and executes each utterance in
   order, and reloads the configuration files every 5 seconds while idle and before each command. It is the only thread that
   touches the transcriber, parser, executor and configuration, so none of them need locks.
   At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes
@@ -29,7 +31,7 @@ implementations.
 | `Speech::Transcriber` | `transcribe(samples)` | `WhisperTranscriber` |
 | `Speech::Synthesiser` | `generate(text)` | `ChatterboxSynthesiser` (`CHATTERBOX_URL`, `CHATTERBOX_VOICE`) |
 | `Audio::Player` | `play(buffer)` | `PortAudioPlayer` |
-| `Commands::Parser` | `configure(config)`, `parse(text, context)`, `failureReason()` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
+| `Commands::Parser` | `configure(config)`, `parse(text, context)`, returning a `ParseResult` | `FallbackParser` over `RegexParser` then `OllamaParser` (`--parser hybrid`, the default); either alone with `--parser regex` or `ollama` |
 | `Commands::Executor` | `configure(config)`, `discoverDevices()`, `discoverServices()`, `preview(command)`, `execute(command)` | `ExecutorRouter` over `HomeAssistant` and, with `SPOTIFY_URL`, `Spotify` |
 
 A `Commands::Command` is `{domain, service, entity, data}`, plus an optional spoken `reply`

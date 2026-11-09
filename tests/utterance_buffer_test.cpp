@@ -48,6 +48,22 @@ int main() {
     check(buffer.event() == UtteranceBuffer::Event::TooLong, "an overlong utterance is reported");
     check(!buffer.finish(), "long utterance is discarded on shutdown");
 
+    UtteranceBuffer muted(0.01f, 200);
+    muted.append(loud, false);
+    muted.append(loud, false);
+    muted.abandon();
+    check(!muted.finish(), "abandoning drops the utterance in progress");
+    muted.abandon();
+    muted.append(loud, false);
+    muted.append(loud, false);
+    check(muted.event() == UtteranceBuffer::Event::None && !muted.finish(), "the echo after abandoning is ignored, and isn't reported as lost audio");
+    muted.abandon();
+    muted.append(quiet, false);
+    muted.append(quiet, false);
+    muted.append(loud, false);
+    muted.append(loud, false);
+    check(muted.finish().has_value(), "speech is heard again after silence");
+
     UtteranceBuffer room(0.01f, 200);
     const Samples music(blockSamples, 0.05f);
     const Samples voice(blockSamples, 0.2f);

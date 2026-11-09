@@ -90,6 +90,11 @@ public:
     std::optional<Samples> finish();
 
     /**
+     * @brief Drop any utterance in progress and ignore audio until the next full silence.
+     */
+    void abandon();
+
+    /**
      * @brief Add one 100 ms block.
      * @param[in] discontinuity Whether capture lost audio before this block.
      * @return The completed utterance when this block ends it, otherwise nullopt.

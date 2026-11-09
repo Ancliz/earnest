@@ -126,7 +126,7 @@ const auto preview = executor->preview(*command);
 ```
 
 `Commands::Parser` defines `configure(configuration)` and `parse(text, context)`,
-returning at most one `Commands::Command`. `RegexParser` compiles rules once and does
+returning a `Commands::ParseResult`: at most one `Commands::Command`, or a spoken reason for refusing. `RegexParser` compiles rules once and does
 no file or network access; `configure` commits only after every rule compiles.
 `OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface, and
 `FallbackParser` (`src/parser/fallback_parser.hpp`) chains two parsers for the hybrid mode.
