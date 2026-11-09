@@ -39,8 +39,8 @@ bool logResult(const Commands::Result& result, bool preview) {
 }
 
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
-                             Config::Configuration& configuration, string wakeWord)
-    : transcriber(transcriber), parser(parser), executor(executor), configuration(configuration),
+                             Config::Configuration& configuration, tts::Engine& engine, Audio::Player& player, string wakeWord)
+    : transcriber(transcriber), speechService(engine, player), parser(parser), executor(executor), configuration(configuration),
       wakeWord(std::move(wakeWord)), thread(&CommandWorker::run, this) {}
 
 CommandWorker::~CommandWorker() {
@@ -138,6 +138,8 @@ void CommandWorker::handle(Samples utterance) {
     logParsed(command);
 
     if(command) {
-        logResult(executor.execute(*command), false);
+        auto result = executor.execute(*command);
+        logResult(result, false);
+        speechService.speak(!result.reply.empty() ? result.reply : result.success ? "Command sent, sir" : "Command failed, sir.");
     }
 }

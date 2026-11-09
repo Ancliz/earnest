@@ -122,6 +122,12 @@ struct ConnectionSettings {
     /// Spotify control server origin (SPOTIFY_URL); empty leaves Spotify commands out.
     string spotifyUrl;
 
+    /// Chatterbox speech server origin including scheme and port (CHATTERBOX_URL).
+    string chatterboxUrl = "http://localhost:4321";
+
+    /// Voice the speech server should use (CHATTERBOX_VOICE).
+    string chatterboxVoice = "jarvis";
+
     /// Parser used when --parser is not given (PARSER): "hybrid", "ollama" or "regex".
     string parser = "hybrid";
 };

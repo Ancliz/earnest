@@ -26,7 +26,7 @@ control.
 ### Requirements
 
 - CMake, a C++17 compiler and pkg-config.
-- Development files for PortAudio, nlohmann-json, libyaml and cpp-httplib.
+- Development files for PortAudio, nlohmann-json, libyaml, cpp-httplib and dr_libs (`dr_wav.h`).
 - A Home Assistant server and a [long-lived access token](https://www.home-assistant.io/docs/authentication/#your-account-profile).
 - An Ollama server with a model installed (default `qwen3.5:4b`).
 - A microphone that supports mono float32 at 16 kHz.

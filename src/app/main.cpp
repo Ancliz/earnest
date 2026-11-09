@@ -15,6 +15,8 @@
 #include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 #include "spotify/spotify.hpp"
+#include "tts/chatterbox.hpp"
+#include "audio/portaudio_player.hpp"
 
 #include <csignal>
 #include <spdlog/spdlog.h>
@@ -67,13 +69,16 @@ bool previewText(const string& text, Parser& parser, Executor& executor) {
  * This thread only captures and segments audio, so speech is still heard while a command runs.
  * A stop request still executes speech that is already buffered or queued.
  */
-void listen(const Settings& settings, Transcriber& transcriber, Parser& parser,
+void listen(const Settings& settings, const ConnectionSettings& connection, Transcriber& transcriber, Parser& parser,
             Executor& executor, Configuration& configuration) {
     std::signal(SIGINT, requestStop);
     std::signal(SIGTERM, requestStop);
     Microphone microphone;
     UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
-    CommandWorker worker(transcriber, parser, executor, configuration, settings.wakeWord);
+    tts::ChatterboxClient chatterbox(connection.chatterboxUrl, connection.chatterboxVoice);
+    Audio::PortAudioPlayer player{};
+
+    CommandWorker worker(transcriber, parser, executor, configuration, chatterbox, player, settings.wakeWord);
     Samples block;
     spdlog::info("Listening. Press Ctrl+C to stop.");
 
@@ -164,7 +169,7 @@ int main(int argc, char* argv[]) {
         whisper->setVocabulary(deviceNames);
         unique_ptr<Transcriber> transcriber = std::move(whisper);
 
-        listen(settings, *transcriber, parser, *executor, configuration);
+        listen(settings, connection, *transcriber, parser, *executor, configuration);
         
     } catch(const std::exception& error) {
         spdlog::error(error.what());

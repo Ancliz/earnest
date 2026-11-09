@@ -160,7 +160,7 @@ ignored `.env` file in the current directory, then environment variables. Readin
 does not change the environment.
 Use `HOME_ASSISTANT_TOKEN` and optionally `HOME_ASSISTANT_URL` (full URL including
 port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
-`http://localhost:11434`) and `OLLAMA_MODEL` (default `qwen3.5:4b`; `--ollama-model` overrides it) and `PARSER` (`ollama` or `regex`; `--parser` overrides it). See `.env.example`.
+`http://localhost:11434`) and `OLLAMA_MODEL` (default `qwen3.5:4b`; `--ollama-model` overrides it) and `PARSER` (`ollama` or `regex`; `--parser` overrides it). `CHATTERBOX_URL` (default `http://localhost:4321`) and `CHATTERBOX_VOICE` (default `jarvis`) choose the speech server and voice. See `.env.example`.
 
 ## Source layout
 
@@ -176,6 +176,7 @@ port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
 | `src/speech/transcriber.hpp` | `Speech::Transcriber` interface |
 | `src/speech/whisper_transcriber.*` | Whisper model lifetime and speech-to-text |
 | `src/audio/microphone.*` | PortAudio capture and bounded capture queue |
+| `src/audio/portaudio_player.*` | PortAudio playback of generated speech |
 | `src/audio/utterance_buffer.*` | Speech energy, silence boundaries, overflow recovery |
 | `src/audio/audio.hpp` | Shared audio sample type and capture constants |
 | `src/home_assistant/home_assistant.*` | Discovery, authenticated state/service queries, and posting |

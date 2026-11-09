@@ -48,11 +48,17 @@ int main() {
           "file values are read and unquoted");
     check(connection.ollamaModel == "test-model" && connection.ollamaUrl == "http://localhost:11434", "Ollama settings are read, with defaults");
     check(connection.parser == "regex", "the parser can be chosen in the file");
+    check(connection.chatterboxUrl == "http://localhost:4321" && connection.chatterboxVoice == "jarvis", "the speech server has defaults");
     check(!std::getenv("HOME_ASSISTANT_URL") && !std::getenv("HOME_ASSISTANT_TOKEN"),
           "reading settings does not change the environment");
     setenv("HOME_ASSISTANT_TOKEN", "environment-token", 1);
     setenv("OLLAMA_URL", "http://environment.invalid:11434", 1);
+    setenv("CHATTERBOX_URL", "http://environment.invalid:4321", 1);
+    setenv("CHATTERBOX_VOICE", "narrator", 1);
     connection = readConnectionSettings(file.string());
+    check(connection.chatterboxUrl == "http://environment.invalid:4321" && connection.chatterboxVoice == "narrator", "the speech server and voice are configurable");
+    unsetenv("CHATTERBOX_URL");
+    unsetenv("CHATTERBOX_VOICE");
     check(connection.token == "test-file-token" && connection.ollamaUrl == "http://environment.invalid:11434",
           "file values override the environment, which fills the rest");
     unsetenv("OLLAMA_URL");
