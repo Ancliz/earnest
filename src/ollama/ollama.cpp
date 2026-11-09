@@ -5,12 +5,30 @@
 
 #include "ollama.hpp"
 
+#include <chrono>
 #include <spdlog/spdlog.h>
 
+using Clock = std::chrono::steady_clock;
 using nlohmann::json;
 using nlohmann::ordered_json;
 using std::runtime_error;
 using std::string;
+
+namespace {
+/**
+ * @brief Log how long a request took, and the breakdown Ollama reports when the reply has one.
+ * @param[in] request What was asked for, to tell the log lines apart.
+ * @param[in] start When the request was sent.
+ * @param[in] reply Decoded response; anything but an object just has no breakdown.
+ */
+void logTiming(const char* request, Clock::time_point start, const json& reply) {
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
+    const auto report = reply.is_object() ? reply : json::object();
+    const auto milliseconds = [&](const char* field) { return report.value(field, 0LL) / 1000000; };
+    spdlog::info("Ollama {} took {} ms: load {} ms, prompt {} ms ({} tokens), generating {} ms ({} tokens)", request, elapsed, milliseconds("load_duration"),
+                 milliseconds("prompt_eval_duration"), report.value("prompt_eval_count", 0), milliseconds("eval_duration"), report.value("eval_count", 0));
+}
+} // namespace
 
 OllamaClient::OllamaClient(const string& url, const string& model) : client(url.c_str()), model(model) {
     client.set_connection_timeout(5);
@@ -36,6 +54,7 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
     }
 
     spdlog::debug("Ollama request:\n{}", request.dump(2));
+    const auto start = Clock::now();
     const auto response = client.Post("/api/chat", request.dump(), "application/json");
 
     if(!response) {
@@ -51,6 +70,7 @@ json OllamaClient::chat(const json& messages, const json& tools, const ordered_j
         throw runtime_error("Ollama returned invalid JSON");
     }
 
+    logTiming("chat", start, reply);
     return reply;
 }
 
@@ -61,11 +81,14 @@ void OllamaClient::sendPrerequest(const string& systemStart) {
                                   {"raw", true},
                                   {"prompt", "<|im_start|>system\n" + systemStart},
                                   {"options", {{"temperature", 0}, {"num_predict", 1}}}};
+    const auto start = Clock::now();
     const auto response = client.Post("/api/generate", request.dump(), "application/json");
 
     if(!response) {
         throw runtime_error("Cannot query Ollama: " + httplib::to_string(response.error()));
     } else if(response->status != 200) {
         spdlog::warn("Ollama prerequest returned HTTP {}; continuing without it", response->status);
+    } else {
+        logTiming("prerequest", start, json::parse(response->body, nullptr, false));
     }
 }
