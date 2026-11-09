@@ -89,6 +89,7 @@ struct FakeExecutor final : Executor {
 int main() {
     httplib::Server server;
     atomic<int> transfers{0};
+    atomic<bool> transferFails{false};
     atomic<int> requests{0};
     json transferred;
     json requested;
@@ -97,6 +98,7 @@ int main() {
 
     server.Get("/devices", [&](const Request&, Response& response) {
         const json devices = {{{"id", "abc"}, {"name", "Lounge Speaker"}, {"is_active", true}},
+                              {{"id", "idle"}, {"name", "Idle Speaker"}, {"is_active", false}},
                               {{"id", "locked"}, {"name", "Locked"}, {"is_restricted", true}}};
         response.set_content(devices.dump(), "application/json");
     });
@@ -121,6 +123,12 @@ int main() {
     server.Put("/transfer", [&](const Request& request, Response& response) {
         ++transfers;
         transferred = json::parse(request.body);
+
+        if(transferFails) {
+            response.status = 502;
+            return;
+        }
+
         response.status = 204;
     });
     const int port = server.bind_to_any_port("127.0.0.1");
@@ -136,7 +144,7 @@ int main() {
     try {
         Spotify spotify("http://127.0.0.1:" + std::to_string(port));
         const auto devices = spotify.discoverDevices();
-        check(devices.size() == 1 && devices[0].entityId == "spotify.abc" && devices[0].name == "Lounge Speaker" && devices[0].state == "active",
+        check(devices.size() == 2 && devices[0].entityId == "spotify.abc" && devices[0].name == "Lounge Speaker" && devices[0].state == "active",
               "Spotify Connect devices are discovered, skipping restricted ones");
         const auto services = spotify.discoverServices();
         check(!findService(services, "spotify", "get_queue")->targetsEntity && findService(services, "spotify", "cast")->targetsEntity,
@@ -146,6 +154,10 @@ int main() {
               "cast transfers playback to the device");
         check(!spotify.execute({"spotify", "cast", "spotify.gone", json::object()}).success && transfers == 1, "cast needs an available device");
         check(spotify.preview({"spotify", "cast", "spotify.abc", json::object()}).success && transfers == 1, "preview sends nothing");
+        transferFails = true;
+        check(spotify.execute({"spotify", "cast", "spotify.abc", json::object()}).success, "a reported failure is ignored when the device became active");
+        check(!spotify.execute({"spotify", "cast", "spotify.idle", json::object()}).success, "a reported failure stands when the device stays idle");
+        transferFails = false;
 
         const auto listed = spotify.execute({"spotify", "get_queue", "", json::object()});
         check(listed.success && listed.reply == "Playing Song 2 by Blur. Next: Bohemian Rhapsody by Queen, Yellow by Coldplay.", "the queue is described");
@@ -172,7 +184,7 @@ int main() {
         ExecutorRouter router({&first, &clash, &down, &spotify});
         const auto catalogue = router.discoverServices();
         check(catalogue.count("media_player") && catalogue.count("spotify") && !catalogue.count("light"), "services merge across executors");
-        check(router.discoverDevices().size() == 3, "devices merge, skipping unreachable executors");
+        check(router.discoverDevices().size() == 4, "devices merge, skipping unreachable executors");
         check(router.execute({"media_player", "turn_on", "media_player.one", json::object()}).reply == "media_player" && first.executed.size() == 1 &&
                   clash.executed.empty(),
               "the first executor offering a domain runs its commands");

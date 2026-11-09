@@ -6,7 +6,10 @@
 #include "spotify.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
+#include <thread>
 
 using std::runtime_error;
 using std::size_t;
@@ -157,6 +160,22 @@ Result Spotify::preview(const Command& command) {
     return result;
 }
 
+bool Spotify::becomesActive(const string& deviceId) {
+    for(int attempt = 0; attempt < 4; ++attempt) {
+        if(attempt > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+
+        for(const auto& device : get("/devices")) {
+            if(device.is_object() && device.value("id", "") == deviceId && device.value("is_active", false)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 Result Spotify::execute(const Command& command) {
     auto result = preview(command);
 
@@ -166,7 +185,18 @@ Result Spotify::execute(const Command& command) {
 
     try {
         if(command.service == "cast") {
-            send("PUT", "/transfer", {{"device_id", command.entity.substr(command.entity.find('.') + 1)}, {"play", true}});
+            const auto deviceId = command.entity.substr(command.entity.find('.') + 1);
+
+            try {
+                send("PUT", "/transfer", {{"device_id", deviceId}, {"play", true}});
+            } catch(const std::exception& error) {
+                // Spotify can report 404 for a transfer that still goes through, so trust the device's state.
+                spdlog::debug("Transfer reported failure, checking the device: {}", error.what());
+
+                if(!becomesActive(deviceId)) {
+                    throw;
+                }
+            }
         } else if(command.service == "get_queue") {
             const auto queue = get("/queue");
             const auto& playing = queue.value("currently_playing", json());

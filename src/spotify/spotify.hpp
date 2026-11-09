@@ -43,6 +43,11 @@ class Spotify final : public Executor {
      */
     json send(const string& method, const string& path, const json& body);
 
+    /**
+     * @brief Whether a device is, or within about 1.5 seconds becomes, the active one.
+     */
+    bool becomesActive(const string& deviceId);
+
 public:
     /**
      * @brief Configure the server origin without making a request.
