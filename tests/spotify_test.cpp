@@ -144,7 +144,7 @@ int main() {
     try {
         Spotify spotify("http://127.0.0.1:" + std::to_string(port));
         const auto devices = spotify.discoverDevices();
-        check(devices.size() == 2 && devices[0].entityId == "spotify.abc" && devices[0].name == "Lounge Speaker" && devices[0].state == "active",
+        check(devices.size() == 2 && devices[0].entityId == "spotify.abc" && devices[0].name == "Lounge Speaker" && devices[0].state == "active" && devices[0].sameNameDomain == "media_player",
               "Spotify Connect devices are discovered, skipping restricted ones");
         const auto services = spotify.discoverServices();
         check(!findService(services, "spotify", "get_queue")->targetsEntity && findService(services, "spotify", "cast")->targetsEntity,

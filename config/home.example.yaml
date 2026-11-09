@@ -9,6 +9,23 @@ aliases:
   media_player.kitchen_speaker:
   - kitchen
 
+# Rooms come from Home Assistant's areas. Give any room other names here; underscores in keys are
+# read as spaces.
+# rooms:
+#   rumpus_room: [tv room]
+
+# Physical devices are worked out automatically: entities on the same Home Assistant device, and
+# Spotify speakers named the same as a media player. Only list one here to correct that, or to
+# set a room Home Assistant doesn't have. A listed entity is left out of the automatic grouping.
+# Entities of one device share all their names. Within a domain, the first one listed is used.
+# devices:
+#   rumpus_soundbar:
+#     room: rumpus_room
+#     aliases: [soundbar]
+#     entities:
+#     - media_player.rumpus_room_soundbar
+#     - spotify.0123456789abcdef
+
 # Services and devices are discovered from Home Assistant. Security, system, automation and
 # helper domains are excluded by default; allow or exclude domains or domain.service names here.
 voice_control:

@@ -4,8 +4,8 @@
  */
 
 #include "regex_parser.hpp"
-#include "device_names.hpp"
 #include "speech_text.hpp"
+#include "home/resolver.hpp"
 
 #include <set>
 
@@ -142,13 +142,35 @@ string fillReply(const string& reply, const json& captured) {
 }
 
 /**
+ * @brief The entity a captured device name means.
+ *
+ * With no name, the default device is used; a media command may also go on with an empty entity
+ * for the executor to reject.
+ *
+ * @return Entity ID, or nullopt when the name is unknown, ambiguous, or spans more than one command.
+ */
+optional<string> capturedDevice(const Home::Resolver& devices, const string& spoken, const string& domain) {
+    static const regex compound(R"(\b(then|but|to|by)\b)");
+    const auto name = Grammar::normalizeName(spoken);
+
+    if(name.empty()) {
+        const auto fallback = devices.defaultIn(domain);
+        return !fallback.empty() || domain == "media_player" ? optional<string>(fallback) : nullopt;
+    } else if(std::regex_search(name, compound) || name.size() > 160) {
+        return nullopt;
+    }
+
+    const auto found = devices.resolve(name, domain);
+    return found ? optional<string>(found.entity) : nullopt;
+}
+
+/**
  * @brief Build the command one pattern produces for normalized text.
  * @param[in] deviceless Whether the rule's service acts on no device, so no device is resolved.
  * @return Command, or nullopt when the pattern does not match, a value is invalid, or the device
  *         cannot be resolved.
  */
-optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const string& text,
-                               const Grammar::DeviceNames& names, bool deviceless) {
+optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const string& text, const Home::Resolver& devices, bool deviceless) {
     smatch match;
 
     if(!std::regex_match(text, match, pattern.expression)) {
@@ -157,7 +179,7 @@ optional<Command> matchPattern(const Rule& rule, const Pattern& pattern, const s
 
     const auto captured = captureSlots(rule, pattern, match);
     // A service that acts on no device, such as reading a queue, has no entity to resolve.
-    const auto entity = !captured ? nullopt : deviceless ? optional<string>("") : names.resolve(captured->value("device", string()), rule.domain);
+    const auto entity = !captured ? nullopt : deviceless ? optional<string>("") : capturedDevice(devices, captured->value("device", string()), rule.domain);
 
     if(!entity) {
         return nullopt;
@@ -181,9 +203,9 @@ RegexParser::RegexParser(const json& configuration) {
 
 void RegexParser::configure(const json& configuration) {
     auto compiled = Grammar::compileRules(configuration);
-    json configuredAliases = configuration.value("aliases", json::object());
+    Home::Registry configured(configuration);
     rules = std::move(compiled);
-    aliases = std::move(configuredAliases);
+    registry = std::move(configured);
 }
 
 Commands::ParseResult RegexParser::parse(const string& text, const Commands::Context& context) {
@@ -200,7 +222,7 @@ Commands::ParseResult RegexParser::parse(const string& text, const Commands::Con
     }
 
     const string request = stripPoliteness(normalized);
-    const Grammar::DeviceNames names(context, aliases);
+    const Home::Resolver devices(registry, context);
     optional<Command> chosen;
     std::set<string> matchedDomains;
 
@@ -215,7 +237,7 @@ Commands::ParseResult RegexParser::parse(const string& text, const Commands::Con
         const bool deviceless = fields && !fields->targetsEntity;
 
         for(const auto& pattern : rule.patterns) {
-            auto proposal = matchPattern(rule, pattern, request, names, deviceless);
+            auto proposal = matchPattern(rule, pattern, request, devices, deviceless);
 
             if(!proposal) {
                 continue;

@@ -44,11 +44,11 @@ void requestStop(int) {
 }
 
 /**
- * @brief Print each device as "entity | name | state".
+ * @brief Print each device as "entity | name | state", followed by its room when it has one.
  */
 void printDevices(const Devices& devices) {
     for(const auto& device : devices) {
-        spdlog::info("{} | {} | {}", device.entityId, device.name, device.state);
+        spdlog::info("{} | {} | {}{}", device.entityId, device.name, device.state, device.room.empty() ? "" : " | " + device.room);
     }
 }
 

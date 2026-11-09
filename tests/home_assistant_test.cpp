@@ -97,6 +97,11 @@ int main() {
                     response.status = mode == 2 ? 500 : 200;
                     response.set_content("[]", "application/json");
                 });
+    atomic<bool> templates{true};
+    server.Post("/api/template", [&](const Request&, Response& response) {
+        response.status = templates ? 200 : 500;
+        response.set_content(R"([["media_player.kitchen", "Kitchen Area", "abc"], ["climate.ac", null, null]])", "text/plain");
+    });
     // Any other POST is unexpected and must fail the POST-count checks.
     server.Post(".*", [&](const Request&, Response& response) {
         ++posts;
@@ -119,6 +124,8 @@ int main() {
         Executor& executor = client;
         const Context context{executor.discoverDevices(), executor.discoverServices()};
         check(context.devices.size() == 3, "discovery returns every controllable entity");
+        check(context.devices[0].room == "Kitchen Area" && context.devices[0].hardwareId == "abc", "discovery reports Home Assistant's area and device");
+        check(context.devices[1].room.empty() && context.devices[1].hardwareId.empty(), "an entity with no area has no room");
         check(context.services.count("media_player") && context.services.count("climate"), "discovery returns the advertised services");
         const auto command = parser.parse("set kitchen volume to forty", context);
         check(command && executor.preview(*command).success && posts == 0, "preview sends no POST");
@@ -152,6 +159,11 @@ int main() {
         const auto failure = executor.execute(*command);
         check(!failure.success && !failure.error.empty() && posts == 3,
               "HTTP failures return details and are not retried");
+        templates = false;
+        HomeAssistant noTemplates(url, "test-token");
+        noTemplates.configure(configuration);
+        const auto roomless = noTemplates.discoverDevices();
+        check(roomless.size() == 3 && roomless[0].room.empty(), "discovery still works when areas can't be read");
         HomeAssistant unauthorized(url, "wrong-token");
         unauthorized.configure(configuration);
         check(!unauthorized.execute(*command).success && posts == 3,

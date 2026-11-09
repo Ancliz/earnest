@@ -7,6 +7,7 @@
 
 #include "ollama.hpp"
 #include "commands/command.hpp"
+#include "home/registry.hpp"
 
 using Commands::Command;
 using Commands::Context;
@@ -22,8 +23,8 @@ class OllamaParser final : public Commands::Parser {
     /// Connection to the model server.
     OllamaClient client;
 
-    /// Extra spoken names for entities, from the configuration's aliases.
-    json aliases = json::object();
+    /// Configured rooms, physical devices and spoken names.
+    Home::Registry registry;
 
 public:
     /**
@@ -32,7 +33,7 @@ public:
     OllamaParser(const string& url, const string& model) : client(url, model) {}
 
     /**
-     * @brief Apply the phrase file's settings, such as aliases.
+     * @brief Apply the phrase file's settings, such as the registry.
      */
     void configure(const json& configuration) override;
 

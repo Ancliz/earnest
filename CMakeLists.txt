@@ -24,15 +24,17 @@ target_compile_definitions(configuration PUBLIC SMARTHOME_PHRASE_FILE="${CMAKE_C
 target_include_directories(configuration PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(configuration PUBLIC nlohmann_json::nlohmann_json PRIVATE PkgConfig::YAML)
 
-add_library(regex-parser
-    src/parser/regex_parser.cpp
-    src/parser/phrase_rules.cpp
-    src/parser/device_names.cpp
-    src/parser/speech_text.cpp)
-target_link_libraries(regex-parser PUBLIC commands)
+add_library(speech-text src/parser/speech_text.cpp)
+target_link_libraries(speech-text PUBLIC commands)
+
+add_library(home-registry src/home/registry.cpp src/home/resolver.cpp)
+target_link_libraries(home-registry PUBLIC commands PRIVATE speech-text)
+
+add_library(regex-parser src/parser/regex_parser.cpp src/parser/phrase_rules.cpp)
+target_link_libraries(regex-parser PUBLIC commands home-registry speech-text)
 
 add_library(home-assistant src/home_assistant/home_assistant.cpp src/home_assistant/control_policy.cpp)
-target_link_libraries(home-assistant PUBLIC commands Threads::Threads)
+target_link_libraries(home-assistant PUBLIC commands spdlog::spdlog Threads::Threads)
 
 add_library(ollama-parser src/ollama/ollama.cpp src/ollama/ollama_parser.cpp)
 target_link_libraries(ollama-parser PUBLIC commands regex-parser spdlog::spdlog Threads::Threads)
@@ -52,12 +54,12 @@ target_link_libraries(executor-router PUBLIC commands spdlog::spdlog)
 add_library(command-worker src/app/command_worker.cpp src/speech/synthesiser.cpp)
 target_link_libraries(command-worker PUBLIC commands configuration regex-parser audio spdlog::spdlog Threads::Threads)
 
-foreach(target configuration regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
+foreach(target configuration speech-text home-registry regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 
 if(BUILD_TESTING)
-    foreach(name parser ollama_parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
+    foreach(name parser resolver ollama_parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
         add_executable(${name}_test tests/${name}_test.cpp)
         target_compile_options(${name}_test PRIVATE -Wall -Wextra -Wpedantic)
         target_link_libraries(${name}_test PRIVATE regex-parser ollama-parser home-assistant spotify-executor executor-router configuration audio app-settings command-worker)

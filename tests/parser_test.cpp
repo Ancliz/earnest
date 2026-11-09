@@ -7,7 +7,7 @@
 #include "fixtures.hpp"
 #include "parser/fallback_parser.hpp"
 #include "config/configuration.hpp"
-#include "parser/device_names.hpp"
+#include "home/resolver.hpp"
 #include "parser/regex_parser.hpp"
 #include "parser/speech_text.hpp"
 #include "spotify/spotify.hpp"
@@ -176,8 +176,8 @@ int main() {
     check(!parser.parse("pause kitchen", ambiguous),
           "equally close names of different devices are ambiguous");
     ambiguous.devices.pop_back();
-    const Grammar::DeviceNames sameEntity(ambiguous, {{"media_player.a", json::array({"kitchon"})}});
-    check(sameEntity.resolve("kitchen", "media_player") == string("media_player.a"),
+    const Home::Resolver sameEntity(Home::Registry(json{{"aliases", {{"media_player.a", json::array({"kitchon"})}}}}), ambiguous);
+    check(sameEntity.resolve("kitchen", "media_player").entity == "media_player.a",
           "equally close names of the same device resolve");
 
     Context discovered;
@@ -185,12 +185,10 @@ int main() {
         device("media_player.rumpus_room_q990b", "Q990"), device("light.q990", "Q990"),
         device("media_player.first", " The Kitchen "),    device("media_player.second", "kitchen"),
         device("media_player.third", "KITCHEN's"),        device("media_player.first", " The Kitchen ")};
-    const Grammar::DeviceNames discoveredNames(discovered, json::object());
-    check(discoveredNames.resolve("rumpus room q990b", "media_player") ==
-              string("media_player.rumpus_room_q990b"),
+    const Home::Resolver discoveredNames(Home::Registry{}, discovered);
+    check(discoveredNames.resolve("rumpus room q990b", "media_player").entity == "media_player.rumpus_room_q990b",
           "object ID with spaces is a name");
-    check(discoveredNames.resolve("media_player.rumpus_room_q990b", "media_player") ==
-              string("media_player.rumpus_room_q990b"),
+    check(discoveredNames.resolve("media_player.rumpus_room_q990b", "media_player").entity == "media_player.rumpus_room_q990b",
           "full entity ID is a name");
     check(
         parser.parse("set the volume on the Q990 to 0.2.", discovered) ==

@@ -4,15 +4,13 @@
  */
 
 #include "ollama_parser.hpp"
-#include "parser/device_names.hpp"
+#include "home/resolver.hpp"
 #include "parser/speech_text.hpp"
 
 #include <algorithm>
-#include <iterator>
 #include <regex>
 #include <set>
 #include <spdlog/spdlog.h>
-#include <sstream>
 
 using Commands::Command;
 using Commands::Context;
@@ -23,9 +21,7 @@ using nlohmann::ordered_json;
 using std::nullopt;
 using std::regex;
 using std::regex_search;
-using std::runtime_error;
 using std::set;
-using std::size_t;
 using std::string;
 using std::vector;
 
@@ -101,65 +97,6 @@ const char* const examples = R"(Examples, using illustrative devices:
 )";
 
 /**
- * @brief Words of a name, normalized; underscores count as spaces so entity IDs split too.
- */
-vector<string> words(string name) {
-    std::replace(name.begin(), name.end(), '_', ' ');
-    std::istringstream stream(normalizeName(name));
-    return {std::istream_iterator<string>(stream), {}};
-}
-
-/**
- * @brief Whether a heard word could be a misheard or shortened name word.
- *
- * Short words must match exactly. Longer ones may differ by about a third, capped at three
- * edits, so "ramp" matches "lamp" and model number "q919" matches "q990b" but "queue" misses "q800b"; a
- * three-letter start also matches, so "bedroom" matches "bed".
- */
-bool soundsLike(const string& heard, const string& name, bool allowEdits = true) {
-    if(heard == name) {
-        return true;
-    } else if(heard.size() < 3 || name.size() < 3) {
-        return false;
-    } else if(heard.compare(0, name.size(), name) == 0 || name.compare(0, heard.size(), heard) == 0) {
-        return true;
-    } else if(!allowEdits) {
-        return false;
-    }
-
-    const auto limit = std::min<size_t>(3, (std::max(heard.size(), name.size()) + 1) / 2);
-    return Grammar::editDistance(heard, name, limit) <= limit;
-}
-
-/**
- * @brief How many heard words match a word of the device's friendly name, object ID or aliases.
- * @param[in] allowEdits Whether a misheard word counts, rather than only a whole or partial word.
- */
-size_t nameScore(const vector<string>& heard, const Device& device, const json& aliases, bool allowEdits = true) {
-    static const set<string> fillers = {"the", "and", "of", "to", "in", "my"};
-    auto names = words(device.name);
-    const auto objectId = words(device.entityId.substr(device.entityId.find('.') + 1));
-    names.insert(names.end(), objectId.begin(), objectId.end());
-
-    for(const auto& alias : aliases.value(device.entityId, json::array())) {
-        const auto aliasWords = words(alias.get<string>());
-        names.insert(names.end(), aliasWords.begin(), aliasWords.end());
-    }
-
-    size_t score = 0;
-
-    for(const auto& word : heard) {
-        const auto matches = [&](const string& name) { return soundsLike(word, name, allowEdits); };
-
-        if(!fillers.count(word) && std::any_of(names.begin(), names.end(), matches)) {
-            ++score;
-        }
-    }
-
-    return score;
-}
-
-/**
  * @brief Whether words the model says it heard are really in the request.
  *
  * Small models may complete a word from the device list, writing "q990b" for "q990", so each word
@@ -171,8 +108,8 @@ bool inRequest(const string& heard, const string& request) {
         return true;
     }
 
-    const auto said = words(request);
-    const auto heardWords = words(heard);
+    const auto said = Grammar::nameWords(request);
+    const auto heardWords = Grammar::nameWords(heard);
 
     return std::all_of(heardWords.begin(), heardWords.end(), [&](const string& word) {
         return std::any_of(said.begin(), said.end(), [&](const string& other) {
@@ -194,58 +131,33 @@ string domainWords(string domain) {
  * @brief Point the command at the device the request names, or say why it names none.
  *
  * The heard words must occur in the request. The model chooses the domain and service well but
- * often the wrong device within it, so the device of that domain matching the most heard words
- * replaces the model's choice; a tie between two such devices is ambiguous. A device of another
- * domain matching more of the words means the model chose the wrong domain. A request naming no
- * device may only target the context's default device.
+ * often the wrong device within it, so the resolver's choice replaces the model's, which only
+ * settles ties. A request naming no device may only target the context's default device.
  *
  * @return Why no device is backed by the request, in words fit to say aloud, or "" once command.entity names one.
  */
-string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const json& aliases) {
+string groundDevice(const string& heard, const string& request, Command& command, const Context& context, const Home::Resolver& resolver) {
+    using Outcome = Home::Resolution::Outcome;
+
     if(heard.empty()) {
         return !context.defaultDevice.empty() && command.entity == context.defaultDevice ? "" : "You didn't name a device";
     } else if(!inRequest(heard, request)) {
         return "I didn't catch which device you meant";
     }
 
-    const auto heardWords = words(heard);
-    vector<const Device*> best;
-    size_t bestScore = 0;
-    size_t otherScore = 0;
-    size_t closeScore = 0;
-    size_t otherCloseScore = 0;
+    const auto found = resolver.resolve(heard, command.domain, Home::Reach::Words, command.entity);
 
-    for(const auto& device : context.devices) {
-        const auto score = nameScore(heardWords, device, aliases);
-        const auto close = nameScore(heardWords, device, aliases, false);
-
-        if(device.domain != command.domain) {
-            otherScore = std::max(otherScore, score);
-            otherCloseScore = std::max(otherCloseScore, close);
-            continue;
-        }
-
-        closeScore = std::max(closeScore, close);
-
-        if(score > bestScore) {
-            best = {&device};
-            bestScore = score;
-        } else if(score == bestScore) {
-            best.push_back(&device);
-        }
+    if(found.outcome == Outcome::Unknown) {
+        return "I can't find a " + domainWords(command.domain) + " device called " + heard;
+    } else if(found.outcome == Outcome::OtherDomain) {
+        return heard + " isn't a " + domainWords(command.domain) + " device";
+    } else if(found.outcome == Outcome::Ambiguous) {
+        return heard + " matches more than one " + domainWords(command.domain) + " device";
     }
 
-    const auto chosen = std::find_if(best.begin(), best.end(), [&](const Device* device) { return device->entityId == command.entity; });
-
-    if(bestScore == 0) {
-        return "I can't find a " + domainWords(command.domain) + " device called " + heard;
-    } else if(otherScore > bestScore || otherCloseScore > closeScore) {
-        return heard + " isn't a " + domainWords(command.domain) + " device";
-    } else if(chosen == best.end() && best.size() > 1) {
-        return heard + " matches more than one " + domainWords(command.domain) + " device";
-    } else if(chosen == best.end()) {
-        spdlog::debug("Correcting the model's device {} to {}", command.entity, best[0]->entityId);
-        command.entity = best[0]->entityId;
+    if(found.entity != command.entity) {
+        spdlog::debug("Correcting the model's device {} to {}", command.entity, found.entity);
+        command.entity = found.entity;
     }
 
     return "";
@@ -286,7 +198,7 @@ struct Offer {
 /**
  * @brief Collect the devices and services a request may refer to.
  */
-Offer describeOffer(const Context& context, const json& aliases) {
+Offer describeOffer(const Context& context, const Home::Registry& registry) {
     Offer offer;
 
     // Offer only devices whose domain the catalogue can command.
@@ -294,8 +206,10 @@ Offer describeOffer(const Context& context, const json& aliases) {
         if(context.services.count(device.domain)) {
             offer.devices.push_back({{"entity", device.entityId}, {"name", device.name}, {"domain", device.domain}});
 
-            if(aliases.contains(device.entityId)) {
-                offer.devices.back()["aliases"] = aliases[device.entityId];
+            const auto aliases = registry.aliasesOf(device.entityId);
+
+            if(!aliases.empty()) {
+                offer.devices.back()["aliases"] = aliases;
             }
 
             offer.domains.insert(device.domain);
@@ -475,19 +389,7 @@ bool convertPercentages(Command& command, const string& request) {
 } // namespace
 
 void OllamaParser::configure(const json& configuration) {
-    const auto configured = configuration.value("aliases", json::object());
-
-    if(!configured.is_object()) {
-        throw runtime_error("aliases must map entity IDs to lists of spoken names");
-    }
-
-    for(const auto& [entity, names] : configured.items()) {
-        if(!names.is_array() || !std::all_of(names.begin(), names.end(), [](const json& name) { return name.is_string(); })) {
-            throw runtime_error("aliases for " + entity + " must be a list of names");
-        }
-    }
-
-    aliases = configured;
+    registry = Home::Registry(configuration);
 }
 
 Commands::ParseResult OllamaParser::parse(const string& text, const Context& context) {
@@ -497,7 +399,7 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
         return nullopt;
     }
 
-    const auto offer = describeOffer(context, aliases);
+    const auto offer = describeOffer(context, registry);
 
     try {
         const auto reply = client.chat(buildMessages(request, offer), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
@@ -512,7 +414,7 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
         }
 
         if(fields->targetsEntity) {
-            const auto unbacked = groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, aliases);
+            const auto unbacked = groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, Home::Resolver(registry, context));
 
             if(!unbacked.empty()) {
                 spdlog::warn("Rejecting model's device choice: {}", unbacked);

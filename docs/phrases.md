@@ -23,7 +23,7 @@ Three parsers are available with `--parser` or `PARSER`:
 - `ollama`: the model only. It matches what was said against the discovered devices,
   their aliases and each service's description.
 
-Both parsers use `aliases`; only the rules use `rules`.
+Both parsers use `aliases`, `rooms` and `devices`; only the rules use `rules`.
 `voice_control` and `advantage_air` work the same whichever parser you choose. The parser only
 proposes a command; the Home Assistant executor then checks it against the voice scope and
 the AC airflow policy, if one is configured, before sending anything, so neither parser can
@@ -101,11 +101,43 @@ aliases:
     - our bedroom
 ```
 
-Only discovered entities receive these aliases. Duplicate normalized names within
-a domain are blocked. Fuzzy matching is bounded and can be disabled with
-`Commands::Context::fuzzyNames`. Discovery lists controllable entities; this is different
-from Home Assistant's physical-device registry. Assist's separate registry aliases
-are not fetched by this application.
+Aliases only apply while the device is discovered. A name shared by different devices
+in a domain is ambiguous unless the room settles it. Fuzzy matching is bounded and can be
+disabled with `Commands::Context::fuzzyNames`. Assist's separate registry aliases are not
+fetched by this application.
+
+## Rooms and physical devices
+
+One physical device can appear as several entities, such as a soundbar in both Home
+Assistant and Spotify. Entities of one device share every name, so "cast to the soundbar"
+picks the Spotify entity and "turn off the soundbar" the Home Assistant one.
+
+This is worked out automatically:
+
+- A device's room is its Home Assistant area. Run `--list-devices` to see them.
+- Entities on the same Home Assistant device are grouped, unless it has several entities in
+  one domain. A ducted AC is one device with a climate entity per zone, and each zone keeps
+  its own name.
+- A Spotify speaker is linked to the media player with the same name, if exactly one has it.
+
+`home.yaml` only needs corrections. Underscores in keys are read as spaces:
+
+```yaml
+rooms:
+  rumpus_room: [tv room]        # other names for a room
+
+devices:
+  rumpus_soundbar:              # also counts as a name
+    room: rumpus_room           # overrides the Home Assistant area
+    aliases: [soundbar]
+    entities:
+    - media_player.rumpus_room_q990b
+    - spotify.0123456789abcdef
+```
+
+A listed entity is left out of the automatic grouping, so listing a Spotify speaker on its
+own stops a wrong name link. Within a domain the first listed entity is used, and listing an
+entity twice is rejected.
 
 ## C++ API
 

@@ -65,7 +65,7 @@ string placeholderName(const json& value);
 
 /**
  * @brief Validate a version-1 phrase configuration and compile its rules in order.
- * @throws std::runtime_error For invalid rules, slots, services or aliases.
+ * @throws std::runtime_error For invalid rules, slots or services.
  * @throws std::regex_error If a phrase or regex cannot compile.
  * @throws nlohmann::json::exception For missing fields or wrong types.
  */

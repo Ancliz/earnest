@@ -6,6 +6,7 @@
 #pragma once
 
 #include "phrase_rules.hpp"
+#include "home/registry.hpp"
 
 using Commands::json;
 
@@ -17,8 +18,8 @@ class RegexParser final : public Commands::Parser {
     /// Compiled rules in configuration order.
     std::vector<Grammar::Rule> rules;
     
-    /// Configured spoken names by entity ID.
-    json aliases = Commands::json::object();
+    /// Configured rooms, physical devices and spoken names.
+    Home::Registry registry;
 
 public:
     /**
@@ -33,7 +34,7 @@ public:
     explicit RegexParser(const json& configuration);
 
     /**
-     * @brief Compile the configuration's rules and aliases, replacing the active ones only on success.
+     * @brief Compile the configuration's rules and read its registry, replacing the active ones only on success.
      */
     void configure(const json& configuration) override;
 

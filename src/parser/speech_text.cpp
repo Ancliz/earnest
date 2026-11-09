@@ -4,7 +4,6 @@
  */
 
 #include "speech_text.hpp"
-#include "device_names.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -91,6 +90,43 @@ string normalizeName(const string& name) {
     }
 
     return trim(result);
+}
+
+std::size_t editDistance(const string& a, const string& b, std::size_t limit) {
+    if(a.size() > b.size() + limit || b.size() > a.size() + limit) {
+        return limit + 1;
+    }
+
+    std::vector<std::size_t> previous(b.size() + 1), current(b.size() + 1);
+
+    for(std::size_t j = 0; j <= b.size(); ++j) {
+        previous[j] = j;
+    }
+
+    // Two-row dynamic programming over insertions, deletions and substitutions.
+    for(std::size_t i = 1; i <= a.size(); ++i) {
+        current[0] = i;
+        std::size_t rowBest = i;
+
+        for(std::size_t j = 1; j <= b.size(); ++j) {
+            current[j] = min({previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] != b[j - 1])});
+            rowBest = min(rowBest, current[j]);
+        }
+
+        if(rowBest > limit) {
+            return limit + 1;
+        }
+
+        previous.swap(current);
+    }
+
+    return previous[b.size()];
+}
+
+vector<string> nameWords(string name) {
+    std::replace(name.begin(), name.end(), '_', ' ');
+    istringstream stream(normalizeName(name));
+    return {std::istream_iterator<string>(stream), {}};
 }
 
 bool hasPercentSuffix(const string& text) {

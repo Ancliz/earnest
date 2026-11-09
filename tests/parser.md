@@ -3,6 +3,7 @@
 | Suite | Covers |
 | --- | --- |
 | `parser_test.cpp` | Speaker phrase variants, spoken numbers, device names, aliases and ambiguity |
+| `resolver_test.cpp` | Rooms, physical devices, shared names and how ties are settled |
 | `control_policy_test.cpp` | Discovery, multi-domain parsing, command validation, and AdvantageAir checks |
 | `configuration_test.cpp` | YAML limits, hot reload, rejected edits, and rollback across consumers |
 | `home_assistant_test.cpp` | Preview and execution against a local mock Home Assistant |

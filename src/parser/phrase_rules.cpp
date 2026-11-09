@@ -160,27 +160,6 @@ void checkPlaceholders(const Pattern& pattern, const Rule& rule) {
     }
 }
 
-/**
- * @brief Require aliases to map entity IDs to lists of nonempty names.
- * @throws std::runtime_error For any other shape.
- */
-void checkAliases(const json& aliases) {
-    if(!aliases.is_object()) {
-        throw runtime_error("aliases must map entity IDs to lists of spoken names");
-    }
-
-    for(const auto& [entity, names] : aliases.items()) {
-        if(entity.find('.') == string::npos || !names.is_array()) {
-            throw runtime_error("Alias entries need an entity ID and a list of names");
-        }
-
-        for(const auto& name : names) {
-            if(!name.is_string() || normalizeName(name.get<string>()).empty()) {
-                throw runtime_error("Alias names must be nonempty strings");
-            }
-        }
-    }
-}
 } // namespace
 
 string placeholderName(const json& value) {
@@ -257,7 +236,6 @@ std::vector<Rule> compileRules(const json& configuration) {
         rules.push_back(std::move(rule));
     }
 
-    checkAliases(configuration.value("aliases", json::object()));
     return rules;
 }
 } // namespace Grammar

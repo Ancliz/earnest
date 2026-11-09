@@ -77,7 +77,7 @@ integration needs no configuration here:
 - **Parser:** derive from `Commands::Parser` and construct it in `main.cpp` instead of
   `OllamaParser`. An LLM parser can describe `context.services` as tools, list
   `context.devices` in its prompt, and convert the chosen tool call into a `Command`.
-  `Grammar::DeviceNames` can resolve a spoken device name if the model returns one.
+  `Home::Resolver` can resolve a spoken device name if the model returns one.
   `OllamaParser` (`src/ollama/`) does this with a JSON schema instead of tools.
 - **Executor:** derive from `Commands::Executor`. `discoverDevices()` and
   `discoverServices()` supply what parsers may target, and `execute()` must validate
@@ -92,7 +92,7 @@ integration needs no configuration here:
 `Config::Configuration` reads `config/phrases.yaml`, merges the installation's
 `config/home.yaml` over it when present, and passes the result to every consumer
 through one callback: the executor reads `advantage_air` and `voice_control`, and
-`RegexParser` reads `rules` and `aliases`, and `OllamaParser` reads `aliases`. When an edit is rejected, the previous configuration is applied again,
+`RegexParser` reads `rules`, and both parsers build a `Home::Registry` from `aliases`, `rooms` and `devices`, which corrects the rooms and groupings executors discover. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
 ## Side effects

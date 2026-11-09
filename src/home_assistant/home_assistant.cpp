@@ -5,6 +5,7 @@
 
 #include "home_assistant.hpp"
 
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 using Commands::Command;
@@ -184,6 +185,9 @@ Devices controllableDevices(const json& states, const ServiceCatalogue& services
     return devices;
 }
 
+/// Renders every entity's ID, area name and device ID, as neither is in /api/states.
+static const char* const placementTemplate = R"([{% for s in states %}{{ [s.entity_id, area_name(s.entity_id), device_id(s.entity_id)] | tojson }}{{ "," if not loop.last }}{% endfor %}])";
+
 HomeAssistant::HomeAssistant(const string& url, const string& token) : client(url) {
     client.set_bearer_token_auth(token);
     client.set_connection_timeout(5);
@@ -222,6 +226,31 @@ bool HomeAssistant::refreshServices(bool force) {
     return true;
 }
 
+void HomeAssistant::refreshPlacements() {
+    if(placed && Clock::now() - *placed < catalogueLifetime) {
+        return;
+    }
+
+    // Set even on failure, so that a server without templates doesn't cost a request per command.
+    placed = Clock::now();
+    const auto text = [](const json& value) { return value.is_string() ? value.get<string>() : string(); };
+    const auto response = client.Post("/api/template", json{{"template", placementTemplate}}.dump(), "application/json");
+    const auto rows = response && response->status == 200 ? json::parse(response->body, nullptr, false) : json();
+
+    if(!rows.is_array()) {
+        spdlog::warn("Cannot read areas from Home Assistant, so devices may have no room");
+        return;
+    }
+
+    placements.clear();
+
+    for(const auto& row : rows) {
+        if(row.is_array() && row.size() == 3 && row[0].is_string()) {
+            placements[row[0].get<string>()] = {text(row[1]), text(row[2])};
+        }
+    }
+}
+
 void HomeAssistant::configure(const json& configuration) {
     auto nextPolicy = readAirflowPolicy(configuration);
     scope = readVoiceScope(configuration);
@@ -231,7 +260,19 @@ void HomeAssistant::configure(const json& configuration) {
 
 Devices HomeAssistant::discoverDevices() {
     refreshServices();
-    return controllableDevices(getArray("/api/states"), services);
+    refreshPlacements();
+    auto devices = controllableDevices(getArray("/api/states"), services);
+
+    for(auto& device : devices) {
+        const auto placement = placements.find(device.entityId);
+
+        if(placement != placements.end()) {
+            device.room = placement->second.room;
+            device.hardwareId = placement->second.hardwareId;
+        }
+    }
+
+    return devices;
 }
 
 ServiceCatalogue HomeAssistant::discoverServices() {

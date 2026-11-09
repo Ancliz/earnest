@@ -6,6 +6,7 @@
 #pragma once
 
 #include "control_policy.hpp"
+#include <map>
 #include <chrono>
 #include <httplib.h>
 #include <optional>
@@ -62,6 +63,18 @@ ServiceCatalogue readServiceCatalogue(const json& services, const VoiceScope& sc
 Devices controllableDevices(const json& states, const ServiceCatalogue& services);
 
 /**
+ * @brief Where Home Assistant says an entity is, and which hardware it belongs to.
+ */
+struct Placement {
+
+    /// Area name; "" when it has none.
+    string room;
+
+    /// Device registry ID; "" when it has none.
+    string hardwareId;
+};
+
+/**
  * @brief Executes commands as Home Assistant service calls, guarded by the airflow policy.
  *
  * Devices are discovered fresh for every command, as validation needs live state. Services change
@@ -94,6 +107,12 @@ class HomeAssistant final : public Executor {
     /// When services was fetched; empty when it must be fetched.
     std::optional<Clock::time_point> fetched;
 
+    /// Each entity's area and hardware, as far as Home Assistant knows them.
+    std::map<string, Placement> placements;
+
+    /// When placements was last attempted; empty when it must be fetched.
+    std::optional<Clock::time_point> placed;
+
     /**
      * @brief GET an API path that returns a JSON array.
      * @throws std::runtime_error For transport errors, non-200 statuses or non-array bodies.
@@ -105,6 +124,11 @@ class HomeAssistant final : public Executor {
      * @return Whether it was fetched.
      */
     bool refreshServices(bool force = false);
+
+    /**
+     * @brief Fetch placements when they are older than a minute; a failure keeps the previous ones.
+     */
+    void refreshPlacements();
 
 public:
     /**

@@ -92,6 +92,9 @@ Devices Spotify::discoverDevices() {
         if(device.is_object() && device.value("id", json()).is_string() && !device.value("is_restricted", false)) {
             const string state = device.value("is_active", false) ? "active" : "idle";
             devices.push_back({"spotify." + device["id"].get<string>(), device.value("name", device["id"].get<string>()), "spotify", state, device});
+           
+            // A speaker's Spotify name is usually its Home Assistant name, and nothing else links the two.
+            devices.back().sameNameDomain = "media_player";
         }
     }
 

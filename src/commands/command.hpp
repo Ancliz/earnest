@@ -35,6 +35,15 @@ struct Device {
 
     /// Device-reported capabilities and current values.
     json attributes = json::object();
+
+    /// Room the executor places it in; "" when it doesn't know.
+    string room = "";
+
+    /// Identifies its hardware, so entities sharing one are a single physical device; "" when unknown.
+    string hardwareId = "";
+
+    /// Domain where an entity of the same name is the same physical device; "" for none.
+    string sameNameDomain = "";
 };
 
 /**
@@ -96,6 +105,9 @@ struct Context {
 
     /// Entity used when the text names no device; ignored outside its own domain.
     string defaultDevice;
+
+    /// Room the request came from, which settles names that fit several devices; "" when unknown.
+    string room;
 
     /// Whether device names may match despite small misspellings.
     bool fuzzyNames = true;

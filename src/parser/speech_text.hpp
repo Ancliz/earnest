@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstddef>
+#include <vector>
 #include <optional>
 #include <string>
 
@@ -29,6 +31,17 @@ string normalizeText(const string& text);
  * @return normalizeText() without a leading "the " or a trailing possessive "'s".
  */
 string normalizeName(const string& name);
+
+/**
+ * @brief Words of a normalized name; underscores count as spaces, so entity IDs split too.
+ */
+std::vector<string> nameWords(string name);
+
+/**
+ * @brief Levenshtein distance between two names, giving up once it must exceed a limit.
+ * @return Exact distance when within limit, otherwise some value above limit.
+ */
+std::size_t editDistance(const string& a, const string& b, std::size_t limit);
 
 /**
  * @brief Whether text ends in " percent", " per cent" or "%".
