@@ -190,6 +190,17 @@ string groundDevice(const string& heard, const string& request, Command& command
 
     return "";
 }
+
+/**
+ * @brief Whether a request sounds like moving playback somewhere, rather than powering something.
+ */
+bool movesPlayback(const string& request) {
+    static const regex power(R"(\b(?:turn|switch|power)(?: .+)? (?:on|off)$|\b(?:turn|switch|power) (?:on|off)\b)");
+    static const regex verb(R"(\b(?:cast|move|transfer|send|put|switch|change|play|playing|playback|listen|continue)\b)");
+    static const regex place(R"(\b(?:to|on|onto|through|over)\b)");
+    const auto text = Grammar::normalizeText(request);
+    return !regex_search(text, power) && regex_search(text, verb) && regex_search(text, place);
+}
 } // namespace
 
 OllamaClient::OllamaClient(const string& url, const string& model) : client(url.c_str()), model(model) {
@@ -332,6 +343,16 @@ std::optional<Command> OllamaParser::parse(const string& text, const Context& co
         const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");
+
+        // Small models can name a Spotify device under the wrong domain, such as media_player.select_source.
+        const auto target = std::find_if(context.devices.begin(), context.devices.end(), [&](const Device& device) { return device.entityId == command.entity; });
+
+        if(target != context.devices.end() && target->domain == "spotify" && command.domain != "spotify" && movesPlayback(request)) {
+            spdlog::debug("Correcting the model's {}.{} to spotify.cast", command.domain, command.service);
+            command.domain = "spotify";
+            command.service = "cast";
+        }
+
         const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
         if(command.domain.empty() || !fields) {
