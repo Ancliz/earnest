@@ -64,7 +64,7 @@ needs no `{device}`; the command's entity is empty.
 `reply` is optional wording to say aloud when the command succeeds, such as
 `reply: 'Turning on {device}.'`. It can use word slots such as `{device}`, not numeric ones;
 if a slot isn't captured, the default acknowledgement is said. An executor's own answer, such as
-the queue, takes priority.
+the queue or the level a volume change set, takes priority.
 
 `body` contains service fields, not `entity_id`; the parser supplies the resolved
 ID. A placeholder must occupy the whole field value, so numeric captures stay

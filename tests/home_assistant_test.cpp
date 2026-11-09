@@ -143,7 +143,9 @@ int main() {
         mode = 1;
         check(relative && executor.preview(*relative).success && posts == 1,
               "relative preview sends no POST");
-        check(executor.execute(*relative).success && posts == 2, "relative volume executes a direct service");
+        const auto changed = executor.execute(*relative);
+        check(changed.success && posts == 2, "relative volume executes a direct service");
+        check(changed.reply.rfind("Volume set to ", 0) == 0 && changed.reply.find(" percent.") != std::string::npos, "a volume change says the level it set");
         check(std::abs(lastReceived()["volume_level"].get<double>() - 0.8) < 1e-6,
               "relative volume uses fresh state rather than the parsing snapshot");
         mode = 2;

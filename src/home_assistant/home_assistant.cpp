@@ -5,6 +5,7 @@
 
 #include "home_assistant.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 using Commands::Command;
@@ -279,6 +280,10 @@ Result HomeAssistant::execute(const Command& command) {
                     "Home Assistant returned HTTP " + std::to_string(response->status) + ": " +
                         response->body,
                     result.command};
+        }
+
+        if(result.command.domain == "media_player" && result.command.service == "volume_set" && result.command.data.value("volume_level", json()).is_number()) {
+            result.reply = "Volume set to " + std::to_string(std::lround(result.command.data["volume_level"].get<double>() * 100)) + " percent.";
         }
 
         return result;
