@@ -36,7 +36,7 @@ target_link_libraries(regex-parser PUBLIC commands home-registry speech-text)
 add_library(home-assistant src/home_assistant/home_assistant.cpp src/home_assistant/control_policy.cpp)
 target_link_libraries(home-assistant PUBLIC commands spdlog::spdlog Threads::Threads)
 
-add_library(ollama-parser src/ollama/ollama.cpp src/ollama/ollama_parser.cpp)
+add_library(ollama-parser src/ollama/ollama.cpp src/ollama/ollama_parser.cpp src/ollama/answer_stream.cpp)
 target_link_libraries(ollama-parser PUBLIC commands regex-parser spdlog::spdlog Threads::Threads)
 
 add_library(audio src/audio/utterance_buffer.cpp)

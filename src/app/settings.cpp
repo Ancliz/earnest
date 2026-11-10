@@ -121,6 +121,12 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.prerequest = false;
         } else if(arg == "--keep-loaded") {
             settings.keepLoaded = true;
+        } else if(arg == "--answer-temperature") {
+            settings.answerTemperature = toNumber<double>(value(), arg);
+
+            if(settings.answerTemperature < 0 || settings.answerTemperature > 2) {
+                throw runtime_error("--answer-temperature must be from 0 to 2");
+            }
         } else if(arg == "--cpu") {
             settings.gpu = false;
         } else if(arg == "--threads") {
@@ -202,7 +208,7 @@ ConnectionSettings readConnectionSettings(const string& path) {
 }
 
 void printUsage(const string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--phrases FILE] [--home FILE] "
+    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--answer-temperature N] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

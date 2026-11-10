@@ -182,6 +182,14 @@ void CommandWorker::handle(Queued utterance) {
     Commands::Context context(std::move(devices), executor.discoverServices());
     context.defaultDevice = memory.recall(exchange.heardAt);
     context.history = memory.recent(exchange.heardAt);
+    bool streamed = false;
+
+    // Sentences are generated here as they arrive, while earlier ones play.
+    context.onSentence = [&](const string& sentence) {
+        streamed = true;
+        enter(Stage::Speaking);
+        say(speech, sentence);
+    };
     exchange.parsed = parser.parse(*text, context);
     logParsed(exchange.parsed);
 
@@ -196,7 +204,7 @@ void CommandWorker::handle(Queued utterance) {
         exchange.spoken = exchange.parsed.answer;
     }
 
-    if(!exchange.spoken.empty()) {
+    if(!exchange.spoken.empty() && !streamed) {
         enter(Stage::Speaking);
         say(speech, exchange.spoken);
     }

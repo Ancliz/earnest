@@ -15,12 +15,18 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
   and submits them. It never waits on inference or the network, so speech is still heard
   while a command runs. While the worker is speaking it drops what it hears, then ignores the
   microphone until the room has been quiet for the silence period, so replies aren't heard as speech.
+- **Playback thread** (`SpeechService`): plays generated speech in order, so the worker can
+  generate the next sentence while the last one plays. The worker counts as speaking until this
+  queue is empty, so the microphone stays gated for the whole reply.
 - **Worker thread** (`CommandWorker`): moves through idle, transcribing, parsing, executing and
   speaking stages, recording each request as an `Exchange`. `ShortTermMemory` keeps the last device commanded for five minutes and offers it as `Context::defaultDevice`, so "turn it up" works. It transcribes, parses and executes each utterance in
   order, and reloads the configuration files every 5 seconds while idle and before each command. It is the only thread that
   touches the transcriber, parser, executor and configuration, so none of them need locks.
   At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes
   every queued utterance before returning.
+
+The rule for new work: each slow or blocking resource gets one thread that owns it, and other
+threads hand it work through a queue. There is no event loop, as Whisper, PortAudio and httplib all block.
 
 Each stage knows the others only through the types in `src/commands/command.hpp` and
 `src/speech/`'s `transcriber.hpp` and `synthesiser.hpp`. `src/app/main.cpp` is the only place that names concrete
@@ -97,10 +103,19 @@ so the parser and executor never disagree.
 
 ## Answering
 
-The model replies with either one command or only `{"answer": "..."}`, chosen in a single call through
-an `anyOf` schema. An answer is a `ParseResult` with no command: the worker says it and remembers it
-alongside commands, and nothing in the house changes. `""` means stay silent. An answer that hits
-the token limit keeps its finished sentences; a command that hits it fails.
+The model replies with either one command or only `{"answer": "..."}` through an `anyOf` schema.
+The reply streams at temperature 0, and its first field shows which it is, after a few tokens:
+
+- **`domain`:** a command. It carries on at temperature 0, as a higher one picked the wrong actions.
+- **`answer` with text:** that request is stopped and sent again at `--answer-temperature` (default
+  1.0) with a schema allowing only an answer, so the higher temperature can only change the wording.
+  This adds about 0.2 s to answers and nothing to commands.
+- **`answer` that is empty:** stay silent.
+
+`AnswerStream` pulls each finished sentence out of the JSON as it arrives and hands it over through
+`Context::onSentence`. An answer is a `ParseResult` with no command: the worker speaks it and
+remembers it alongside commands, and nothing in the house changes. An answer that hits the token
+limit keeps its finished sentences; a command that hits it fails.
 
 ## Keeping the model loaded
 

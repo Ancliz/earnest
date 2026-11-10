@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <functional>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -31,6 +32,11 @@ class OllamaClient {
 
 public:
     /**
+     * @brief Told each piece of generated text; returns false to stop generating.
+     */
+    using TextReceiver = std::function<bool(const string&)>;
+
+    /**
      * @brief Configure the endpoint and model without making a request.
      * @param[in] url Server origin, including scheme and port.
      * @param[in] model Installed model name and tag.
@@ -39,16 +45,15 @@ public:
     OllamaClient(const string& url, const string& model, bool keepLoaded = false);
 
     /**
-     * @brief Submit messages and optional tools to the chat endpoint.
+     * @brief Generate a reply to messages, passing it on piece by piece as it is written.
      * @param[in] messages Chat messages with roles and content.
-     * @param[in] tools Function-tool definitions; empty for a plain conversation.
-     * @param[in] format JSON schema the reply content must match, in the order fields should be
-     *                   generated; empty for free text.
-     * @return Decoded response, including message content or tool calls.
+     * @param[in] format JSON schema the reply must match, in the order fields should be generated.
+     * @param[in] temperature How freely to choose words; 0 always gives the likeliest reply.
+     * @param[in] receiver Told each piece of text; returning false stops generating.
+     * @return The final report with all the text as message.content; only the text if it was stopped.
      * @throws std::runtime_error For transport failures, non-200 statuses, or invalid JSON.
      */
-    json chat(const json& messages, const json& tools = json::array(),
-              const ordered_json& format = ordered_json::object());
+    json chat(const json& messages, const ordered_json& format, double temperature, const TextReceiver& receiver);
 
     /**
      * @brief Load the unchanging start of a prompt, so that the chat request after it reads only what follows.

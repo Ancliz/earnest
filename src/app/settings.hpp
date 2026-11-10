@@ -67,6 +67,9 @@ struct Settings {
     /// Whether to ask Ollama never to unload the model; set by --keep-loaded.
     bool keepLoaded = false;
 
+    /// How freely Ollama words spoken answers, from 0 to 2; commands are always generated at 0.
+    double answerTemperature = 1.0;
+
     /// Whisper GGML model path.
     string model = "models/ggml-base.en.bin";
 

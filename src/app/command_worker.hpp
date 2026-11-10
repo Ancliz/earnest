@@ -79,7 +79,7 @@ private:
     /// Speech recognizer, used on the worker thread only.
     Speech::Transcriber& transcriber;
 
-    /// Says the outcome of each command, used on the worker thread only.
+    /// Says the outcome of each command; speak() is used on the worker thread only.
     Speech::SpeechService& speech;
 
     /// Command parser, used on the worker thread only.
@@ -155,7 +155,7 @@ public:
      * @brief Whether the assistant is talking, so whatever the microphone hears is its own voice.
      */
     bool isSpeaking() const {
-        return stage == Stage::Speaking;
+        return stage == Stage::Speaking || speech.isBusy();
     }
 
     /**

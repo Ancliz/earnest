@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -160,6 +161,57 @@ public:
 
     void configure(const json&) override {}
     Commands::ParseResult parse(const string&, const Context&) override { return result; }
+};
+
+/**
+ * @brief Answers two sentences, passing each on as it would while the model writes them.
+ */
+class StreamingParser final : public Commands::Parser {
+public:
+    void configure(const json&) override {}
+
+    Commands::ParseResult parse(const string&, const Context& context) override {
+        context.onSentence("One.");
+        context.onSentence("Two.");
+        return Commands::ParseResult::answered("One. Two.");
+    }
+};
+
+/**
+ * @brief Generates silence whose sample rate is the text, so tests can tell the audio apart.
+ */
+class NumberedSynthesiser final : public Speech::Synthesiser {
+public:
+    Audio::Buffer generate(std::string_view text) override { return {{}, static_cast<uint32_t>(std::stoi(string(text))), 1}; }
+};
+
+/**
+ * @brief Holds playback until opened, records what was played, and fails on a sample rate of 1.
+ */
+class GatedPlayer final : public Audio::Player {
+    std::mutex playedMutex;
+    vector<int> played;
+
+public:
+    std::atomic<bool> open{false};
+
+    void play(const Audio::Buffer& audio) override {
+        while(!open) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        if(audio.sampleRate == 1) {
+            throw std::runtime_error("no device");
+        }
+
+        std::lock_guard<std::mutex> lock(playedMutex);
+        played.push_back(static_cast<int>(audio.sampleRate));
+    }
+
+    vector<int> heard() {
+        std::lock_guard<std::mutex> lock(playedMutex);
+        return played;
+    }
 };
 
 /**
@@ -328,6 +380,27 @@ vector<string> sayRefusal(const string& reason) {
 }
 
 /**
+ * @brief What is generated when the parser passes on each sentence itself.
+ */
+vector<string> whatIsStreamed() {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = {"a"};
+    StreamingParser parser;
+    RecordingExecutor executor;
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    RecordingSynthesiser synthesiser;
+    SilentPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+
+    {
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "");
+        worker.submit(utterance(0));
+    }
+
+    return synthesiser.said;
+}
+
+/**
  * @brief Run texts through a fresh worker and return the entities it executed.
  */
 vector<string> runScript(const vector<string>& texts, const string& wakeWord = "") {
@@ -402,6 +475,30 @@ int main() {
     check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");
     check(sayRefusal("").empty(), "speech the parser has no complaint about stays silent");
     check(whatIsSaid(Commands::ParseResult::answered("Paris, sir.")) == vector<string>{"Paris, sir."}, "an answer is said as written");
+    check(whatIsStreamed() == vector<string>{"One.", "Two."}, "a streamed answer is said sentence by sentence, and not again at the end");
+
+    NumberedSynthesiser numbered;
+    GatedPlayer gated;
+
+    {
+        Speech::SpeechService speech(numbered, gated);
+        speech.speak("100");
+        speech.speak("1");
+        speech.speak("200");
+        check(speech.isBusy() && gated.heard().empty(), "speaking returns without waiting for playback");
+        gated.open = true;
+
+        for(int i = 0; i < 2000 && speech.isBusy(); ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        check(!speech.isBusy() && gated.heard() == vector<int>{100, 200}, "speech plays in order, and a failed sentence doesn't stop the rest");
+        gated.open = false;
+        speech.speak("300");
+        gated.open = true;
+    }
+
+    check(gated.heard() == vector<int>{100, 200, 300}, "shutting down plays what is still queued");
 
     const Command light{"light", "turn_on", "light.a", json::object(), "Turning it on."};
     const Command volume{"media_player", "volume_set", "media_player.a", {{"volume_level", 0.3}}, "Louder."};

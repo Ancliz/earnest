@@ -4,6 +4,7 @@
  */
 
 #include "check.hpp"
+#include "ollama/answer_stream.hpp"
 #include "ollama/ollama_parser.hpp"
 
 #include <iostream>
@@ -20,10 +21,13 @@ int main() {
     httplib::Server server;
     json answer;
     string cutOff;
+    string streamed;
+    std::vector<json> chats;
     string lastPrompt;
     server.Post("/api/chat", [&](const httplib::Request& request, httplib::Response& response) {
         lastPrompt = request.body;
-        response.set_content(json{{"message", {{"content", cutOff.empty() ? answer.dump() : cutOff}}}, {"done_reason", cutOff.empty() ? "stop" : "length"}}.dump(), "application/json");
+        chats.push_back(json::parse(request.body));
+        response.set_content(!streamed.empty() ? streamed : json{{"message", {{"content", cutOff.empty() ? answer.dump() : cutOff}}}, {"done_reason", cutOff.empty() ? "stop" : "length"}}.dump(), "application/json");
     });
     std::vector<string> prerequests;
     bool prerequestKeepsLoaded = false;
@@ -135,13 +139,23 @@ int main() {
     check(misfiled && misfiled->domain == "spotify", "a service under the wrong domain moves to the only one offering it");
     answer = {{"domain", "media_player"}, {"service", "no_such_service"}, {"heard", ""}, {"entity", ""}, {"data", json::object()}, {"reply", ""}};
     check(!parser.parse("do something odd", context), "a service nobody offers isn't a command");
+    const json pointingCommand = {{"domain", "media_player"}, {"service", "turn_off"}, {"heard", "q800"}, {"entity", "media_player.q800"}, {"data", json::object()}, {"reply", ""}};
     answer = {{"answer", " Paris, sir. "}};
     const auto question = parser.parse("what is the capital of france", context);
     check(!question && question.answer == "Paris, sir." && question.refusal.empty(), "the model can answer instead of commanding");
-    check(json::parse(lastPrompt).at("format").contains("anyOf"), "the reply may be either a command or an answer");
+    const auto& choosing = chats[chats.size() - 2];
+    check(choosing.at("format").contains("anyOf") && choosing.at("options").at("temperature") == 0, "whether to command or answer is chosen at temperature 0");
+    check(chats.back().at("options").at("temperature") == 1.0 && !chats.back().at("format").contains("anyOf") && chats.back().at("messages") == choosing.at("messages"), "the answer is regenerated freely, and can only be an answer");
+    OllamaParser warm("http://127.0.0.1:" + std::to_string(port), "test", true, false, 1.5);
+    warm.parse("what is the capital of france", context);
+    check(chats.back().at("options").at("temperature") == 1.5, "the answer temperature is selectable");
+    auto requestsBefore = chats.size();
+    answer = pointingCommand;
+    check(parser.parse("turn off the q800", context).has_value() && chats.size() == requestsBefore + 1 && chats.back().at("options").at("temperature") == 0, "a command takes one request at temperature 0");
+    requestsBefore = chats.size();
     answer = {{"answer", ""}};
     const auto overheard = parser.parse("so anyway I told her", context);
-    check(!overheard && overheard.answer.empty() && overheard.refusal.empty(), "an empty answer stays silent");
+    check(!overheard && overheard.answer.empty() && overheard.refusal.empty() && chats.size() == requestsBefore + 1, "an empty answer stays silent, without generating again");
     Context chatting = context;
     chatting.history = {{"what is the capital of france", Command{}, true, "Paris, sir."}};
     parser.parse("and of spain", chatting);
@@ -156,6 +170,32 @@ int main() {
     const auto brokenCommand = parser.parse("turn off the q800", context);
     check(!brokenCommand && brokenCommand.answer.empty() && !brokenCommand.refusal.empty(), "a command cut off by the token limit is a failure");
     cutOff.clear();
+
+    const auto piece = [](const string& text) { return json{{"message", {{"content", text}}}, {"done", false}}.dump() + "\n"; };
+    streamed = piece("{\"answer\": \"") + piece("Hello") + piece(" there, sir. ") + piece("How") + piece(" are you?") + piece("\"}") + json{{"message", {{"content", ""}}}, {"done", true}, {"done_reason", "stop"}}.dump() + "\n";
+    std::vector<string> sentences;
+    Context listening = context;
+    listening.onSentence = [&](const string& sentence) { sentences.push_back(sentence); };
+    const auto flowing = parser.parse("hello", listening);
+    check(sentences == std::vector<string>{"Hello there, sir.", "How are you?"} && flowing.answer == "Hello there, sir. How are you?", "each sentence is passed on as it is finished");
+    streamed.clear();
+
+    const string wire = R"({"answer": "He said \"stop.\" Then Dr. Smith left! Is it 3.5? Line\nbreak. Caf\u00e9 time."})";
+    const std::vector<string> expected = {"He said \"stop.\"", "Then Dr. Smith left!", "Is it 3.5?", "Line break.", "Caf\xc3\xa9 time."};
+
+    for(size_t split = 0; split <= wire.size(); ++split) {
+        std::vector<string> found;
+        AnswerStream stream([&](const string& sentence) { found.push_back(sentence); });
+        stream.feed(wire.substr(0, split));
+        stream.feed(wire.substr(split));
+        stream.finish();
+        check(found == expected, "sentences survive being split anywhere, at byte " + std::to_string(split));
+    }
+
+    AnswerStream unfinished({});
+    unfinished.feed(R"({"answer": "Done. Not don)");
+    unfinished.finish();
+    check(unfinished.text() == "Done.", "a sentence the reply cut off is dropped");
     server.stop();
     serving.join();
     std::cout << checks << " Ollama parser checks passed\n";

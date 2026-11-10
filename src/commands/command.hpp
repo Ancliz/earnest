@@ -7,6 +7,7 @@
 
 #include "services.hpp"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -129,6 +130,9 @@ struct Context {
 
     /// Room the request came from, which settles names that fit several devices; "" when unknown.
     string room;
+
+    /// Told each finished sentence of an answer while the rest is being written; may be empty.
+    std::function<void(const string&)> onSentence;
 
     /// Whether device names may match despite small misspellings.
     bool fuzzyNames = true;

@@ -4,6 +4,7 @@
  */
 
 #include "ollama_parser.hpp"
+#include "answer_stream.hpp"
 #include "home/resolver.hpp"
 #include "parser/speech_text.hpp"
 
@@ -60,28 +61,39 @@ ordered_json commandFormat(const set<string>& domains, const set<string>& servic
 }
 
 /**
- * @brief Schema that lets the reply be either one command or only words to say.
- *
- * The answer is alone in its object, so its text starts as soon as the model has chosen to answer.
+ * @brief Schema for a reply that is only words to say.
  */
-ordered_json replyFormat(ordered_json command) {
-    const ordered_json answer = {{"type", "object"}, {"properties", {{"answer", {{"type", "string"}}}}}, {"required", ordered_json::array({"answer"})}};
-    return ordered_json{{"anyOf", ordered_json::array({std::move(command), answer})}};
+ordered_json answerFormat() {
+    return ordered_json{{"type", "object"}, {"properties", {{"answer", {{"type", "string"}}}}}, {"required", ordered_json::array({"answer"})}};
 }
 
 /**
- * @brief The finished sentences of an answer the token limit cut off, or "" if it isn't one or has none.
+ * @brief Schema that lets the reply be either one command or only words to say.
  */
-string completeSentences(const string& content) {
-    static const regex finished(R"(^\s*\{\s*"answer"\s*:\s*".*[.!?](?= ))");
-    std::smatch sentences;
+ordered_json replyFormat(ordered_json command) {
+    return ordered_json{{"anyOf", ordered_json::array({std::move(command), answerFormat()})}};
+}
 
-    if(!regex_search(content, sentences, finished)) {
-        return "";
+/**
+ * @brief What the start of a reply shows it to be.
+ */
+enum class Route { Undecided, Command, Answer, Silent };
+
+/**
+ * @brief Tell a command from an answer by the reply's first field; an empty answer means staying silent.
+ */
+Route routeOf(const string& generated) {
+    static const regex command(R"(^\s*\{\s*"domain")");
+    static const regex answer(R"(^\s*\{\s*"answer"\s*:\s*"([\s\S]))");
+    std::smatch opening;
+
+    if(regex_search(generated, command)) {
+        return Route::Command;
+    } else if(!regex_search(generated, opening, answer)) {
+        return Route::Undecided;
     }
 
-    const auto repaired = json::parse(sentences.str() + "\"}", nullptr, false);
-    return repaired.is_discarded() ? "" : repaired.value("answer", "");
+    return opening[1] == "\"" ? Route::Silent : Route::Answer;
 }
 
 /**
@@ -494,6 +506,21 @@ void OllamaParser::configure(const json& configuration) {
     registry = Home::Registry(configuration);
 }
 
+ParseResult OllamaParser::speakAnswer(const json& messages, const Context& context) {
+    AnswerStream answer(context.onSentence);
+    const auto reply = client.chat(messages, answerFormat(), answerTemperature, [&](const string& piece) {
+        answer.feed(piece);
+        return true;
+    });
+    answer.finish();
+
+    if(answer.text().empty() && reply.value("done_reason", "") == "length") {
+        throw std::runtime_error("the answer was cut off before its first sentence ended");
+    }
+
+    return ParseResult::answered(answer.text());
+}
+
 ParseResult OllamaParser::parse(const string& text, const Context& context) {
     const auto request = tidy(text);
 
@@ -510,20 +537,24 @@ ParseResult OllamaParser::parse(const string& text, const Context& context) {
             client.sendPrerequest(stable);
         }
 
-        const auto reply = client.chat(buildMessages(stable, request, context.history), json::array(), replyFormat(commandFormat(offer.domains, offer.serviceNames, offer.entities)));
-        const auto generated = reply.at("message").at("content").get<string>();
-        const auto partial = reply.value("done_reason", "") == "length" ? completeSentences(generated) : "";
+        const auto messages = buildMessages(stable, request, context.history);
+        auto route = Route::Undecided;
+        string seen;
 
-        if(!partial.empty()) {
-            return ParseResult::answered(partial);
+        // Always chosen at temperature 0, so only the wording of an answer is ever left to chance.
+        const auto reply = client.chat(messages, replyFormat(commandFormat(offer.domains, offer.serviceNames, offer.entities)), 0, [&](const string& piece) {
+            seen += piece;
+            route = route == Route::Undecided ? routeOf(seen) : route;
+            return route == Route::Undecided || route == Route::Command;
+        });
+
+        if(route == Route::Answer) {
+            return speakAnswer(messages, context);
+        } else if(route == Route::Silent) {
+            return ParseResult::answered("");
         }
 
-        const auto content = json::parse(generated);
-
-        if(content.contains("answer")) {
-            return ParseResult::answered(Grammar::trim(content.at("answer").get<string>()));
-        }
-
+        const auto content = json::parse(reply.at("message").at("content").get<string>());
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");
         correctServiceDomain(command, context);
