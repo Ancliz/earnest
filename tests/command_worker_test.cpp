@@ -152,14 +152,14 @@ public:
 };
 
 /**
- * @brief Never finds a command, and gives the configured reason.
+ * @brief Never finds a command, and gives the configured result.
  */
-class RefusingParser final : public Commands::Parser {
+class CannedParser final : public Commands::Parser {
 public:
-    string reason;
+    Commands::ParseResult result;
 
     void configure(const json&) override {}
-    Commands::ParseResult parse(const string&, const Context&) override { return Commands::ParseResult::refused(reason); }
+    Commands::ParseResult parse(const string&, const Context&) override { return result; }
 };
 
 /**
@@ -299,13 +299,13 @@ std::pair<Exchange, bool> observeExchange(const string& heard) {
 }
 
 /**
- * @brief What the worker says when a parser refuses with the given reason.
+ * @brief What the worker says when the parser gives this result.
  */
-vector<string> sayRefusal(const string& reason) {
+vector<string> whatIsSaid(Commands::ParseResult result) {
     ScriptedTranscriber transcriber;
     transcriber.texts = {"a"};
-    RefusingParser parser;
-    parser.reason = reason;
+    CannedParser parser;
+    parser.result = std::move(result);
     RecordingExecutor executor;
     Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
     RecordingSynthesiser synthesiser;
@@ -318,6 +318,13 @@ vector<string> sayRefusal(const string& reason) {
     }
 
     return synthesiser.said;
+}
+
+/**
+ * @brief What the worker says when a parser refuses with the given reason.
+ */
+vector<string> sayRefusal(const string& reason) {
+    return whatIsSaid(Commands::ParseResult::refused(reason));
 }
 
 /**
@@ -384,10 +391,17 @@ int main() {
     }
 
     check(memory.recent(at(1001)).size() == 4, "only the last few requests are kept");
+    Exchange question;
+    question.heardAt = at(1000);
+    question.request = "what is the capital of france";
+    question.parsed = Commands::ParseResult::answered("Paris, sir.");
+    memory.remember(question);
+    check(memory.recent(at(1001)).back().answer == "Paris, sir." && memory.recall(at(1001)) == "light.lamp", "an answer is part of the conversation but doesn't change \"it\"");
     check(sayRefusal("q800 isn't a spotify device") == vector<string>{"q800 isn't a spotify device, sir."}, "a refusal says what went wrong");
     check(sayRefusal("I'm sorry sir, I can't.") == vector<string>{"I'm sorry sir, I can't."}, "a reason already addressing sir is said as written");
     check(sayRefusal("I can't find sirius") == vector<string>{"I can't find sirius, sir."}, "only the whole word counts as addressing sir");
     check(sayRefusal("").empty(), "speech the parser has no complaint about stays silent");
+    check(whatIsSaid(Commands::ParseResult::answered("Paris, sir.")) == vector<string>{"Paris, sir."}, "an answer is said as written");
 
     const Command light{"light", "turn_on", "light.a", json::object(), "Turning it on."};
     const Command volume{"media_player", "volume_set", "media_player.a", {{"volume_level", 0.3}}, "Louder."};

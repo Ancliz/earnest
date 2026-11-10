@@ -54,13 +54,13 @@ void printDevices(const Devices& devices) {
 
 /**
  * @brief Parse typed text against live devices and print what would be sent, without sending it.
- * @return Whether a command was recognized and accepted.
+ * @return Whether the text was answered, or recognized as a command and accepted.
  */
 bool previewText(const string& text, Parser& parser, Executor& executor) {
     spdlog::info("Input: {}", text);
     const auto command = parser.parse(text, {executor.discoverDevices(), executor.discoverServices()});
     logParsed(command);
-    return command && logResult(executor.preview(*command), true);
+    return command ? logResult(executor.preview(*command), true) : !command.answer.empty();
 }
 
 /**

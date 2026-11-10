@@ -15,6 +15,7 @@
 using Commands::Command;
 using Commands::Context;
 using Commands::Device;
+using Commands::ParseResult;
 using Grammar::normalizeName;
 using nlohmann::json;
 using nlohmann::ordered_json;
@@ -59,6 +60,31 @@ ordered_json commandFormat(const set<string>& domains, const set<string>& servic
 }
 
 /**
+ * @brief Schema that lets the reply be either one command or only words to say.
+ *
+ * The answer is alone in its object, so its text starts as soon as the model has chosen to answer.
+ */
+ordered_json replyFormat(ordered_json command) {
+    const ordered_json answer = {{"type", "object"}, {"properties", {{"answer", {{"type", "string"}}}}}, {"required", ordered_json::array({"answer"})}};
+    return ordered_json{{"anyOf", ordered_json::array({std::move(command), answer})}};
+}
+
+/**
+ * @brief The finished sentences of an answer the token limit cut off, or "" if it isn't one or has none.
+ */
+string completeSentences(const string& content) {
+    static const regex finished(R"(^\s*\{\s*"answer"\s*:\s*".*[.!?](?= ))");
+    std::smatch sentences;
+
+    if(!regex_search(content, sentences, finished)) {
+        return "";
+    }
+
+    const auto repaired = json::parse(sentences.str() + "\"}", nullptr, false);
+    return repaired.is_discarded() ? "" : repaired.value("answer", "");
+}
+
+/**
  * @brief Text without surrounding whitespace or trailing punctuation, as transcribers add both.
  */
 string tidy(const string& text) {
@@ -69,8 +95,14 @@ string tidy(const string& text) {
 }
 
 /// What the model must do, one instruction per line.
-const char* const instructions = R"(Turn the user's request into one command.
-First choose the domain and one of its services for what is asked.
+const char* const instructions = R"(You are this home's voice assistant, talking with the person who lives here.
+If a listed service can do or answer the request, turn it into one command, even a question such as what is playing.
+Otherwise reply with only an answer: one or two short natural sentences to say aloud, calling the user "sir".
+Questions, jokes, stories and small talk are all welcome, so answer those yourself.
+An answer changes nothing in the house, so never say you did something or are about to.
+You can't see the time, the weather or whether a device is on, so say you don't know rather than guess.
+Use "" for words that make no sense or aren't meant for you.
+For a command, first choose the domain and one of its services for what is asked.
 Then set heard to the exact words of the request that name the device, and entity to that domain's device whose name or
 alias sounds most like them; speech is often misheard, so pick the closest device rather than giving up.
 "turn on" and "turn off" mean turn_on and turn_off, while play and pause mean media_play and media_pause, so "play"
@@ -93,7 +125,12 @@ const char* const examples = R"(Examples, using illustrative devices:
 "play the kitchen speaker" -> {"domain": "media_player", "service": "media_play", "heard": "kitchen speaker", "entity":
 "media_player.kitchen", "data": {}, "reply": "Playing the kitchen speaker."};
 "set the desk ramp to forty percent" -> {"domain": "light", "service": "turn_on", "heard": "desk ramp", "entity":
-"light.desk_lamp", "data": {"brightness_pct": 40}, "reply": "Setting the desk lamp to forty percent."}.
+"light.desk_lamp", "data": {"brightness_pct": 40}, "reply": "Setting the desk lamp to forty percent."};
+"what's playing" -> {"domain": "spotify", "service": "get_queue", "heard": "", "entity": "", "data": {}, "reply": ""};
+"how long until wonderwall" -> {"domain": "spotify", "service": "time_until", "heard": "", "entity": "", "data": {"song":
+"wonderwall"}, "reply": ""};
+"what's the capital of france" -> {"answer": "Paris, sir."};
+"how are you" -> {"answer": "Very well, thank you, sir."}.
 )";
 
 /**
@@ -274,6 +311,11 @@ string describeHistory(const vector<Commands::PastRequest>& history) {
     string text;
 
     for(const auto& past : history) {
+        if(!past.answer.empty()) {
+            text += json(past.request).dump() + " -> you said " + json(past.answer).dump() + "; ";
+            continue;
+        }
+
         text += json(past.request).dump() + " -> " + past.command.domain + "." + past.command.service;
         text += (past.command.entity.empty() ? "" : " on " + past.command.entity) + (past.succeeded ? "; " : " (failed); ");
     }
@@ -289,7 +331,7 @@ string stablePrompt(const Offer& offer) {
     return string(instructions) + examples + "Services with their allowed and required data fields: " + offer.services.dump() +
            ". Devices: " + offer.devices.dump() +
            ". A service's description says how people ask for it; prefer the service whose description "
-           "matches the wording. If no service fits the request, return empty strings.";
+           "matches the wording. If no service fits the request, answer instead.";
 }
 
 /**
@@ -298,6 +340,26 @@ string stablePrompt(const Offer& offer) {
  */
 json buildMessages(const string& stable, const string& request, const vector<Commands::PastRequest>& history) {
     return {{{"role", "system"}, {"content", stable + describeHistory(history)}}, {{"role", "user"}, {"content", request}}};
+}
+
+/**
+ * @brief Move a service named under a domain that lacks it to the only domain offering it.
+ *
+ * The schema limits domains and services separately, so a small model can pair them wrongly.
+ */
+void correctServiceDomain(Command& command, const Context& context) {
+    vector<string> owners;
+
+    for(const auto& [domain, services] : context.services) {
+        if(services.count(command.service)) {
+            owners.push_back(domain);
+        }
+    }
+
+    if(owners.size() == 1 && owners[0] != command.domain) {
+        spdlog::debug("Correcting the model's {}.{} to domain {}", command.domain, command.service, owners[0]);
+        command.domain = owners[0];
+    }
 }
 
 /**
@@ -432,7 +494,7 @@ void OllamaParser::configure(const json& configuration) {
     registry = Home::Registry(configuration);
 }
 
-Commands::ParseResult OllamaParser::parse(const string& text, const Context& context) {
+ParseResult OllamaParser::parse(const string& text, const Context& context) {
     const auto request = tidy(text);
 
     if(request.empty()) {
@@ -448,10 +510,23 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
             client.sendPrerequest(stable);
         }
 
-        const auto reply = client.chat(buildMessages(stable, request, context.history), json::array(), commandFormat(offer.domains, offer.serviceNames, offer.entities));
-        const auto content = json::parse(reply.at("message").at("content").get<string>());
+        const auto reply = client.chat(buildMessages(stable, request, context.history), json::array(), replyFormat(commandFormat(offer.domains, offer.serviceNames, offer.entities)));
+        const auto generated = reply.at("message").at("content").get<string>();
+        const auto partial = reply.value("done_reason", "") == "length" ? completeSentences(generated) : "";
+
+        if(!partial.empty()) {
+            return ParseResult::answered(partial);
+        }
+
+        const auto content = json::parse(generated);
+
+        if(content.contains("answer")) {
+            return ParseResult::answered(Grammar::trim(content.at("answer").get<string>()));
+        }
+
         auto command = content.get<Command>();
         command.reply = content.value("reply", "");
+        correctServiceDomain(command, context);
         correctWrongDomain(command, request, context);
         const auto* fields = Commands::findService(context.services, command.domain, command.service);
 
@@ -464,7 +539,7 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
 
             if(!unbacked.empty()) {
                 spdlog::warn("Rejecting model's device choice: {}", unbacked);
-                return Commands::ParseResult::refused(unbacked);
+                return ParseResult::refused(unbacked);
             }
         } else {
             command.entity = "";
@@ -476,18 +551,18 @@ Commands::ParseResult OllamaParser::parse(const string& text, const Context& con
 
         if(!objection.empty()) {
             spdlog::warn("Rejecting request \"{}\": {}", request, objection);
-            return Commands::ParseResult::refused(objection);
+            return ParseResult::refused(objection);
         }
 
         applyVolumeDirection(command, request);
 
         if(!convertPercentages(command, request)) {
-            return Commands::ParseResult::refused("That number doesn't match what you said");
+            return ParseResult::refused("That number doesn't match what you said");
         }
 
         return command;
     } catch(const std::exception& error) {
         spdlog::error("Ollama parse failed: {}", error.what());
-        return Commands::ParseResult::refused("I'm sorry sir, I'm having a hard time thinking at the moment.");
+        return ParseResult::refused("I'm sorry sir, I'm having a hard time thinking at the moment.");
     }
 }

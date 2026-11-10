@@ -16,9 +16,11 @@ using std::lock_guard;
 using std::mutex;
 using std::string;
 
-void logParsed(const std::optional<Commands::Command>& command) {
-    if(command) {
-        spdlog::info("Command recognized: {}{}", json(*command).dump(), command->reply.empty() ? "" : " (reply: " + command->reply + ")");
+void logParsed(const Commands::ParseResult& parsed) {
+    if(parsed) {
+        spdlog::info("Command recognized: {}{}", json(*parsed).dump(), parsed->reply.empty() ? "" : " (reply: " + parsed->reply + ")");
+    } else if(!parsed.answer.empty()) {
+        spdlog::info("Answering: {}", parsed.answer);
     } else {
         spdlog::info("No command recognized");
     }
@@ -190,6 +192,8 @@ void CommandWorker::handle(Queued utterance) {
         exchange.spoken = spokenReply(*exchange.parsed, *exchange.result);
     } else if(!exchange.parsed.refusal.empty()) {
         exchange.spoken = spokenFailure(exchange.parsed.refusal);
+    } else {
+        exchange.spoken = exchange.parsed.answer;
     }
 
     if(!exchange.spoken.empty()) {

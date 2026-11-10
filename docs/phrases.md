@@ -21,7 +21,8 @@ Three parsers are available with `--parser` or `PARSER`:
   same way, then the Ollama model for anything no rule decides, including ambiguous text.
 - `regex`: the phrase rules only; needs no model server.
 - `ollama`: the model only. It matches what was said against the discovered devices,
-  their aliases and each service's description.
+  their aliases and each service's description. A request no service fits gets a short spoken
+  answer instead, using the last few requests as context.
 
 Both parsers use `aliases`, `rooms` and `devices`; only the rules use `rules`.
 `voice_control` and `advantage_air` work the same whichever parser you choose. The parser only
@@ -158,7 +159,7 @@ const auto preview = executor->preview(*command);
 ```
 
 `Commands::Parser` defines `configure(configuration)` and `parse(text, context)`,
-returning a `Commands::ParseResult`: at most one `Commands::Command`, or a spoken reason for refusing. `RegexParser` compiles rules once and does
+returning a `Commands::ParseResult`: at most one `Commands::Command`, a spoken reason for refusing, or a spoken answer. `RegexParser` compiles rules once and does
 no file or network access; `configure` commits only after every rule compiles.
 `OllamaParser` (`src/ollama/ollama_parser.hpp`) implements the same interface, and
 `FallbackParser` (`src/parser/fallback_parser.hpp`) chains two parsers for the hybrid mode.

@@ -13,7 +13,7 @@
 #include <vector>
 
 /**
- * @brief The last few commands and the device most recently commanded, for a few minutes after.
+ * @brief The last few commands and answers, and the device most recently commanded, for a few minutes after.
  */
 class ShortTermMemory {
 
@@ -23,7 +23,7 @@ class ShortTermMemory {
     /// How long a request is remembered; long enough for a follow-up, short enough not to hit the wrong thing later.
     static constexpr auto lifetime = std::chrono::minutes(5);
 
-    /// Requests kept for a parser to read; each one lengthens every prompt.
+    /// Requests kept for a parser to read; each one lengthens every prompt that follows.
     static constexpr std::size_t maxRequests = 4;
 
     /**
@@ -47,20 +47,31 @@ class ShortTermMemory {
     /// When the request for that device was heard.
     Clock::time_point deviceHeardAt;
 
+    /**
+     * @brief Add a request to the conversation, dropping the oldest once there are too many.
+     */
+    void keep(Commands::PastRequest past, Clock::time_point heardAt) {
+        entries.push_back({std::move(past), heardAt});
+
+        if(entries.size() > maxRequests) {
+            entries.pop_front();
+        }
+    }
+
 public:
     /**
      * @brief Take in a finished exchange. Only a command that worked and targets a device becomes "it".
      */
     void remember(const Exchange& exchange) {
+        if(!exchange.parsed.answer.empty()) {
+            keep({exchange.request, {}, true, exchange.parsed.answer}, exchange.heardAt);
+        }
+
         if(!exchange.result) {
             return;
         }
 
-        entries.push_back({{exchange.request, exchange.result->command, exchange.result->success}, exchange.heardAt});
-
-        if(entries.size() > maxRequests) {
-            entries.pop_front();
-        }
+        keep({exchange.request, exchange.result->command, exchange.result->success}, exchange.heardAt);
 
         if(exchange.result->success && !exchange.result->command.entity.empty()) {
             device = exchange.result->command.entity;

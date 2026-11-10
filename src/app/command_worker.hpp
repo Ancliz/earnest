@@ -29,7 +29,7 @@ using std::string;
  *
  * Log the input itself before parsing, so it precedes anything the parser logs.
  */
-void logParsed(const std::optional<Commands::Command>& command);
+void logParsed(const Commands::ParseResult& parsed);
 
 /**
  * @brief Log a preview or execution outcome.

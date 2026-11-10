@@ -95,6 +95,13 @@ through one callback: the executor reads `advantage_air` and `voice_control`, an
 `RegexParser` reads `rules`, and both parsers build a `Home::Registry` from `aliases`, `rooms` and `devices`, which corrects the rooms and groupings executors discover. When an edit is rejected, the previous configuration is applied again,
 so the parser and executor never disagree.
 
+## Answering
+
+The model replies with either one command or only `{"answer": "..."}`, chosen in a single call through
+an `anyOf` schema. An answer is a `ParseResult` with no command: the worker says it and remembers it
+alongside commands, and nothing in the house changes. `""` means stay silent. An answer that hits
+the token limit keeps its finished sentences; a command that hits it fails.
+
 ## Keeping the model loaded
 
 By default the Ollama server decides when to unload the model, normally after five idle minutes, and

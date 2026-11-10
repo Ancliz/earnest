@@ -105,6 +105,9 @@ struct PastRequest {
 
     /// Whether the command worked.
     bool succeeded = false;
+
+    /// What was said in reply when it wasn't a command; the command is then empty.
+    string answer = "";
 };
 
 /**
@@ -155,7 +158,7 @@ struct Result {
 };
 
 /**
- * @brief A parser's answer: an optional command and, when it has none, perhaps why.
+ * @brief What a parser made of some text: a command, or else words to say back, or nothing.
  */
 struct ParseResult : std::optional<Command> {
     using std::optional<Command>::optional;
@@ -163,12 +166,24 @@ struct ParseResult : std::optional<Command> {
     /// Why the request was refused, in words fit to say aloud; empty when it simply wasn't a command.
     string refusal;
 
+    /// What to say to a request that isn't a command, such as a question; empty when there is nothing to say.
+    string answer;
+
     /**
      * @brief A result with no command and a reason to give.
      */
     static ParseResult refused(string reason) {
         ParseResult result;
         result.refusal = std::move(reason);
+        return result;
+    }
+
+    /**
+     * @brief A result with no command and words to say back.
+     */
+    static ParseResult answered(string words) {
+        ParseResult result;
+        result.answer = std::move(words);
         return result;
     }
 };
@@ -196,7 +211,7 @@ public:
      *
      * @param[in] text Transcript or typed command.
      * @param[in] context Devices and name-resolution preferences for this text.
-     * @return The single command the text asks for; otherwise empty, with a refusal if there is a reason to give.
+     * @return The single command the text asks for; otherwise empty, with a refusal or an answer if there is one to give.
      */
     virtual ParseResult parse(const string& text, const Context& context) = 0;
 };
