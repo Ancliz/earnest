@@ -7,6 +7,7 @@
 #include "spoken_reply.hpp"
 #include "parser/speech_text.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <spdlog/spdlog.h>
 #include <vector>
@@ -66,9 +67,9 @@ void say(Speech::SpeechService& speech, const string& text) {
 
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
                              Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord,
-                             ExchangeObserver observer)
+                             ExchangeObserver observer, std::chrono::milliseconds followUp)
     : transcriber(transcriber), speech(speech), parser(parser), executor(executor), configuration(configuration),
-      wakeWord(std::move(wakeWord)), observer(std::move(observer)), thread(&CommandWorker::run, this) {}
+      wakeWord(std::move(wakeWord)), followUp(followUp), observer(std::move(observer)), thread(&CommandWorker::run, this) {}
 
 CommandWorker::~CommandWorker() {
     {
@@ -147,6 +148,24 @@ void CommandWorker::enter(Stage next) {
     stage = next;
 }
 
+bool CommandWorker::followsUp(std::chrono::steady_clock::time_point heardAt) const {
+    if(followUp.count() <= 0 || !repliedAt) {
+        return false;
+    }
+
+    // Speech heard before the conversation began, even if handled after, wasn't part of it.
+    const auto from = std::max(*repliedAt, speech.finishedAt());
+    return heardAt > conversationHeardAt && heardAt <= from + followUp;
+}
+
+void CommandWorker::keepListening(std::chrono::steady_clock::time_point heardAt) {
+    if(!followsUp(heardAt)) {
+        conversationHeardAt = heardAt;
+    }
+
+    repliedAt = std::chrono::steady_clock::now();
+}
+
 void CommandWorker::handle(Queued utterance) {
     enter(Stage::Transcribing);
     const string heard = transcriber.transcribe(std::move(utterance.samples));
@@ -159,13 +178,19 @@ void CommandWorker::handle(Queued utterance) {
     }
 
     spdlog::info("Input: {}", heard);
-    const auto text = Grammar::stripWakeWord(heard, wakeWord);
+    auto text = Grammar::stripWakeWord(heard, wakeWord);
+
+    if(!text && followsUp(utterance.heardAt)) {
+        spdlog::info("Taking this as a follow-up, without the wake word");
+        text = Grammar::stripWakeWord(heard, "");
+    }
 
     if(!text) {
         spdlog::debug("Ignoring speech without the wake word: {}", heard);
         return;
     } else if(text->empty()) {
         spdlog::info("Wake word heard with no command");
+        keepListening(utterance.heardAt);
         return;
     }
 
@@ -210,6 +235,11 @@ void CommandWorker::handle(Queued utterance) {
     }
 
     memory.remember(exchange);
+
+    // Only a reply or an action keeps the conversation going, so speech the model ignored can't hold it open.
+    if(!exchange.spoken.empty() || exchange.result) {
+        keepListening(exchange.heardAt);
+    }
 
     if(observer) {
         observer(exchange);

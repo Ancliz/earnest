@@ -24,6 +24,9 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
   touches the transcriber, parser, executor and configuration, so none of them need locks.
   At most three utterances wait; beyond that the oldest is dropped. On shutdown it finishes
   every queued utterance before returning.
+  After a reply or an action, or the wake word on its own, speech finished within `--follow-up`
+  seconds (default 8) of the reply ending needs no wake word. Only a reply or an action extends
+  that window, so speech the model chose to ignore can't hold it open.
 
 The rule for new work: each slow or blocking resource gets one thread that owns it, and other
 threads hand it work through a queue. There is no event loop, as Whisper, PortAudio and httplib all block.

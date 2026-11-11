@@ -94,6 +94,15 @@ private:
     /// Phrase that must open each command; empty accepts every utterance.
     string wakeWord;
 
+    /// How long after a reply speech counts as meant for the assistant without the wake word; 0 turns this off.
+    std::chrono::milliseconds followUp;
+
+    /// When the speech that started the current conversation was heard; later speech can follow it up.
+    std::chrono::steady_clock::time_point conversationHeardAt;
+
+    /// When the assistant last finished handling something addressed to it; the window runs from here or the end of playback.
+    std::optional<std::chrono::steady_clock::time_point> repliedAt;
+
     /// Last reload error reported, so a broken file is reported once rather than on every check.
     string lastReloadError;
 
@@ -141,15 +150,26 @@ private:
      */
     void enter(Stage next);
 
+    /**
+     * @brief Whether speech heard at this time follows up the conversation, so needs no wake word.
+     */
+    bool followsUp(std::chrono::steady_clock::time_point heardAt) const;
+
+    /**
+     * @brief Start or extend the window for follow-ups, from speech heard at this time.
+     */
+    void keepListening(std::chrono::steady_clock::time_point heardAt);
+
 public:
     /**
      * @brief Start the worker thread.
      * @param[in] observer Told about each turn addressed to the assistant; may be empty.
+     * @param[in] followUp How long after a reply speech needs no wake word; 0 turns this off.
      * @throws std::system_error If the thread cannot start.
      */
     CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
                   Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord,
-                  ExchangeObserver observer = {});
+                  ExchangeObserver observer = {}, std::chrono::milliseconds followUp = {});
 
     /**
      * @brief Whether the assistant is talking, so whatever the microphone hears is its own voice.

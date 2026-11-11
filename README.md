@@ -93,7 +93,10 @@ and `--log-file`.
   are discarded rather than run incomplete.
 - **Wake word:** with `--wake-word`, only speech that opens with it is acted on. Matching is
   fuzzy, so "hey Travis"  for a wake work of "Jarvis" still counts, and an optional greeting
-  such as "hey" or "ok" is allowed.
+  such as "hey" or "ok" is allowed. After a reply, or after the wake word on its own, anything you
+  finish saying within 8 seconds of the reply ending is taken as meant for Earnest, so follow-ups
+  don't need the wake word. Each reply restarts that window. `--follow-up SECONDS` changes it, and
+  `--follow-up 0` turns it off.
 - **Noise:** Whisper segments with low confidence are dropped, and transcripts that are only
   fillers or sound labels ("mhm", "[laughter]") are ignored.
 - **In the background:** commands run on their own thread, so it keeps listening while one is

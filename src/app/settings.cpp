@@ -121,6 +121,12 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.prerequest = false;
         } else if(arg == "--keep-loaded") {
             settings.keepLoaded = true;
+        } else if(arg == "--follow-up") {
+            settings.followUpSeconds = toNumber<double>(value(), arg);
+
+            if(settings.followUpSeconds < 0) {
+                throw runtime_error("--follow-up can't be negative");
+            }
         } else if(arg == "--answer-temperature") {
             settings.answerTemperature = toNumber<double>(value(), arg);
 
@@ -209,6 +215,6 @@ ConnectionSettings readConnectionSettings(const string& path) {
 
 void printUsage(const string& executable) {
     spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--answer-temperature N] [--phrases FILE] [--home FILE] "
-                 "[--wake-word TEXT] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
+                 "[--wake-word TEXT] [--follow-up SECONDS] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

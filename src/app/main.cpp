@@ -77,7 +77,8 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
     UtteranceBuffer utterances(settings.threshold, settings.silenceMs);
     Audio::PortAudioPlayer player;
     Speech::SpeechService speech(synthesiser, player);
-    CommandWorker worker(transcriber, parser, executor, configuration, speech, settings.wakeWord);
+    const auto followUp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(settings.followUpSeconds));
+    CommandWorker worker(transcriber, parser, executor, configuration, speech, settings.wakeWord, {}, followUp);
     Samples block;
     spdlog::info("Listening. Press Ctrl+C to stop.");
 

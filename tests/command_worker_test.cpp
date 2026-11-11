@@ -403,7 +403,7 @@ vector<string> whatIsStreamed() {
 /**
  * @brief Run texts through a fresh worker and return the entities it executed.
  */
-vector<string> runScript(const vector<string>& texts, const string& wakeWord = "") {
+vector<string> runScript(const vector<string>& texts, const string& wakeWord = "", milliseconds followUp = {}, milliseconds pause = {}) {
     ScriptedTranscriber transcriber;
     transcriber.texts = texts;
     EchoParser parser;
@@ -415,9 +415,10 @@ vector<string> runScript(const vector<string>& texts, const string& wakeWord = "
     Speech::SpeechService speech(synthesiser, player);
 
     {
-        CommandWorker worker(transcriber, parser, executor, configuration, speech, wakeWord);
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, wakeWord, {}, followUp);
 
         for(size_t i = 0; i < texts.size(); ++i) {
+            std::this_thread::sleep_for(pause);
             worker.submit(utterance(i));
         }
     }
@@ -513,6 +514,12 @@ int main() {
     check(runScript({"a", "throw", "c"}) == vector<string>{"light.a", "light.c"}, "a failed utterance does not stop the worker");
     check(runScript({"  ", "a"}) == vector<string>{"light.a"}, "blank transcripts are skipped");
     check(runScript({"jarvis kitchen", "kitchen", "jarvis"}, "jarvis") == vector<string>{"light.kitchen"}, "the wake word gates commands");
+    const vector<string> conversation = {"light.kitchen", "light.lounge", "light.hall"};
+    check(runScript({"jarvis kitchen", "lounge", "hall"}, "jarvis", milliseconds(3000), milliseconds(100)) == conversation, "speech soon after a reply needs no wake word, and each reply extends the window");
+    check(runScript({"jarvis", "kitchen"}, "jarvis", milliseconds(3000), milliseconds(100)) == vector<string>{"light.kitchen"}, "the wake word on its own opens the window");
+    check(runScript({"jarvis kitchen", "lounge"}, "jarvis", milliseconds(0), milliseconds(100)) == vector<string>{"light.kitchen"}, "follow-ups can be turned off");
+    check(runScript({"jarvis kitchen", "lounge"}, "jarvis", milliseconds(100), milliseconds(400)) == vector<string>{"light.kitchen"}, "the window closes");
+    check(runScript({"lounge", "jarvis kitchen"}, "jarvis", milliseconds(3000)) == vector<string>{"light.kitchen"}, "speech before the conversation began isn't a follow-up");
 
     ScriptedTranscriber transcriber;
     transcriber.texts = {"a", "b", "c", "d", "e"};

@@ -63,7 +63,9 @@ void SpeechService::playAll() {
             spdlog::warn("Cannot play speech: {}", error.what());
         }
 
-        --unfinished;
+        if(--unfinished == 0) {
+            lastFinished = Clock::now().time_since_epoch().count();
+        }
     }
 }
 } // namespace Speech

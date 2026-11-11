@@ -8,6 +8,7 @@
 #include "audio/audio.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -64,6 +65,9 @@ class SpeechService {
     /// Audio queued or playing.
     std::atomic<std::size_t> unfinished{0};
 
+    /// When the queue last ran empty, as a steady_clock count; 0 before anything has played.
+    std::atomic<std::chrono::steady_clock::rep> lastFinished{0};
+
     /// Thread running playAll(); declared last so it starts after every other member exists.
     std::thread playback;
 
@@ -104,5 +108,10 @@ public:
      * @brief Whether any speech is queued or playing; safe from any thread.
      */
     bool isBusy() const { return unfinished > 0; }
+
+    /**
+     * @brief When the last speech finished playing; the clock's epoch if none has. Safe from any thread.
+     */
+    std::chrono::steady_clock::time_point finishedAt() const { return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(lastFinished.load())); }
 };
 } // namespace Speech

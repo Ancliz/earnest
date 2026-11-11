@@ -92,10 +92,10 @@ int main() {
     const auto pointing = [](const char* heard, const char* entity) { return json{{"domain", "media_player"}, {"service", "turn_off"}, {"heard", heard}, {"entity", entity}, {"data", json::object()}, {"reply", ""}}; };
 
     answer = pointing("it", "media_player.q800");
-    check(parser.parse("turn it off", talking).has_value() && lastPrompt.find("pause the kitchen") != string::npos && lastPrompt.find("(failed)") != string::npos, "the model is told the conversation and how it went");
+    check(parser.parse("turn it off", talking).has_value() && json::parse(lastPrompt).at("messages").size() == 6 && json::parse(lastPrompt).at("messages")[1].at("content") == "pause the kitchen" && json::parse(lastPrompt).at("messages")[4].at("content").get<string>().find("That failed.") != string::npos, "the model is told the conversation as turns, and how it went");
     const auto loaded = prerequests.back().substr(opening.size());
     const auto sent = json::parse(lastPrompt).at("messages")[0].at("content").get<string>();
-    check(sent.rfind(loaded, 0) == 0 && sent.size() > loaded.size() && loaded.find("Earlier requests") == string::npos, "the prerequest is exactly the start of the prompt, without the conversation");
+    check(sent == loaded, "the prerequest is exactly the start of the prompt, without the conversation");
     prerequestStatus = 500;
     check(parser.parse("turn it off", talking).has_value(), "a failed prerequest doesn't stop the command");
     prerequestStatus = 200;
@@ -105,7 +105,7 @@ int main() {
     OllamaParser kept("http://127.0.0.1:" + std::to_string(port), "test", true, true);
     check(kept.parse("turn it off", talking).has_value() && prerequestKeepsLoaded && json::parse(lastPrompt).at("keep_alive") == -1, "both requests can keep the model loaded");
     parser.parse("turn it off", context);
-    check(lastPrompt.find("Earlier requests") == string::npos, "with no conversation the prompt says nothing about one");
+    check(json::parse(lastPrompt).at("messages").size() == 2, "with no conversation there are no earlier turns");
     answer = pointing("the other one", "media_player.kitchen");
     const auto otherOne = parser.parse("turn off the other one", talking);
     check(otherOne && otherOne->entity == "media_player.kitchen", "\"the other one\" is the latest device that isn't the current one");
@@ -159,7 +159,17 @@ int main() {
     Context chatting = context;
     chatting.history = {{"what is the capital of france", Command{}, true, "Paris, sir."}};
     parser.parse("and of spain", chatting);
-    check(lastPrompt.find("you said") != string::npos && lastPrompt.find("Paris, sir.") != string::npos, "the model is told what it said");
+    check(json::parse(lastPrompt).at("messages")[2].at("content") == json{{"answer", "Paris, sir."}}.dump(), "the model is told what it said, as its own reply");
+    answer = pointing("q800", "media_player.q800");
+    const auto followOn = parser.parse("and the kitchen", context);
+    check(followOn.refusal != "I can only do one thing at a time", "a follow-up opening with \"and\" isn't two commands");
+    Context remembering = context;
+    remembering.defaultDevice = "media_player.q800";
+    answer = pointing("bedroom speaker", "media_player.q800");
+    const auto fromHistory = parser.parse("turn it off", remembering);
+    check(fromHistory && fromHistory->entity == "media_player.q800", "\"it\" with the earlier device's name as heard means the remembered device");
+    answer = pointing("bedroom speaker", "media_player.kitchen");
+    check(!parser.parse("turn off now", remembering), "a heard name the request doesn't contain can't move a command elsewhere");
     cutOff = R"({"answer": "It was 3.5 metres long. Then it grew. And after that it ne)";
     const auto longAnswer = parser.parse("tell me a story", context);
     check(!longAnswer && longAnswer.answer == "It was 3.5 metres long. Then it grew.", "an answer cut off by the token limit keeps its finished sentences");
