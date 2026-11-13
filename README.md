@@ -83,7 +83,11 @@ Check things without speaking or changing anything:
 
 `--list-devices` and `--parse` make read-only requests and need no Whisper model. Run
 `--help` for every option, including `--parser`, `--ollama-model`, `--no-prerequest` (turns off a speed-up specific to `qwen3.5:4b`; use it with any other model), `--keep-loaded` (never lets Ollama unload the model, avoiding a slow first request but holding its GPU memory), `--answer-temperature` (how freely spoken answers are worded, from 0 to 2; commands always use 0), `--threads`, `--threshold`, `--silence-ms`, `--log-level`
-and `--log-file`.
+and `--log-file`. The file can have its own level with `--log-file-level`. It can start afresh with
+`--log-roll-every daily|hourly`, into files named for the day or hour, and with `--log-max-mb N`
+once it reaches N megabytes; given both, it rolls over at whichever comes first. `--log-keep` sets
+how many old files are kept (3 by default; 0 keeps them all). The terminal shows colour unless
+`NO_COLOR` is set or `TERM` is `dumb`.
 
 ## How it listens
 

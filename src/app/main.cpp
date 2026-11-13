@@ -126,7 +126,17 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
 int main(int argc, char* argv[]) {
     try {
         const auto settings = parseArguments(argc, argv);
-        Log::setup(settings.logLevel, settings.logFile);
+        std::vector<Log::Destination> destinations{Log::Destination::terminal()};
+
+        if(!settings.logFile.empty()) {
+            auto file = Log::Destination::file(settings.logFile, settings.logFileLevel);
+            file.rolling.every = settings.logRollEvery == "daily" ? Log::Period::Daily : settings.logRollEvery == "hourly" ? Log::Period::Hourly : Log::Period::None;
+            file.rolling.maxBytes = std::size_t(settings.logMaxMegabytes) * 1024 * 1024;
+            file.rolling.keep = settings.logKeep;
+            destinations.push_back(file);
+        }
+
+        Log::setup(settings.logLevel, destinations);
 
         if(settings.mode == Mode::Help) {
             printUsage(argv[0]);

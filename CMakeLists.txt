@@ -25,7 +25,7 @@ target_include_directories(configuration PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_link_libraries(configuration PUBLIC nlohmann_json::nlohmann_json PRIVATE PkgConfig::YAML)
 
 # One logger per category; libraries log through it, and the application sets where it goes.
-add_library(logging src/log/log.cpp)
+add_library(logging src/log/log.cpp src/log/rolling_file_sink.cpp)
 target_include_directories(logging PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(logging PUBLIC spdlog::spdlog)
 
@@ -64,7 +64,7 @@ foreach(target logging configuration speech-text home-registry regex-parser home
 endforeach()
 
 if(BUILD_TESTING)
-    foreach(name parser resolver ollama_parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
+    foreach(name log parser resolver ollama_parser control_policy configuration home_assistant spotify utterance_buffer settings command_worker)
         add_executable(${name}_test tests/${name}_test.cpp)
         target_compile_options(${name}_test PRIVATE -Wall -Wextra -Wpedantic)
         target_link_libraries(${name}_test PRIVATE regex-parser ollama-parser home-assistant spotify-executor executor-router configuration audio app-settings command-worker)

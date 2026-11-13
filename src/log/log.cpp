@@ -5,9 +5,10 @@
 
 #include "log.hpp"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <spdlog/pattern_formatter.h>
-#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -90,27 +91,62 @@ std::unique_ptr<spdlog::formatter> lineFormat(const char* time, bool colour) {
 } // namespace
 
 namespace Log {
-void setup(const std::string& level, const std::string& file) {
-    const auto threshold = spdlog::level::from_str(level);
+/**
+ * @brief Whether standard error is a terminal that wants colour.
+ */
+bool terminalShowsColour() {
+    const char* noColour = std::getenv("NO_COLOR");
+    const char* terminal = std::getenv("TERM");
+    return isatty(fileno(stderr)) && !(noColour && *noColour) && !(terminal && string_view(terminal) == "dumb");
+}
+
+/**
+ * @brief A level by name.
+ * @throws std::runtime_error For an unknown name.
+ */
+spdlog::level::level_enum levelNamed(const std::string& name) {
+    const auto level = spdlog::level::from_str(name);
 
     // from_str maps unknown names to off, so only "off" itself may yield it.
-    if(threshold == spdlog::level::off && level != "off") {
-        throw std::runtime_error("Unknown log level: " + level);
+    if(level == spdlog::level::off && name != "off") {
+        throw std::runtime_error("Unknown log level: " + name);
     }
 
-    auto console = make_shared<spdlog::sinks::stderr_sink_mt>();
-    console->set_formatter(lineFormat("[%H:%M:%S]", isatty(fileno(stderr))));
-    std::vector<spdlog::sink_ptr> sinks{console};
+    return level;
+}
 
-    if(!file.empty()) {
-        auto disk = make_shared<spdlog::sinks::basic_file_sink_mt>(file);
-        disk->set_formatter(lineFormat("[%Y-%m-%d %H:%M:%S.%e]", false));
-        sinks.push_back(disk);
+/**
+ * @brief The sink for one destination, formatted for it.
+ */
+spdlog::sink_ptr sinkFor(const Destination& destination) {
+    if(destination.kind == Destination::Kind::Terminal) {
+        auto terminal = make_shared<spdlog::sinks::stderr_sink_mt>();
+        terminal->set_formatter(lineFormat("[%H:%M:%S]", destination.colour.value_or(terminalShowsColour())));
+        return terminal;
+    }
+
+    auto file = make_shared<RollingFileSink>(destination.path, destination.rolling);
+    file->set_formatter(lineFormat("[%Y-%m-%d %H:%M:%S.%e]", destination.colour.value_or(false)));
+    return file;
+}
+
+void setup(const std::string& level, const std::vector<Destination>& destinations) {
+    const auto fallback = levelNamed(level);
+    std::vector<spdlog::sink_ptr> sinks;
+
+    // Each logger passes on what the most detailed destination wants, and each sink filters for itself.
+    auto lowest = spdlog::level::off;
+
+    for(const auto& destination : destinations) {
+        const auto threshold = destination.level.empty() ? fallback : levelNamed(destination.level);
+        sinks.push_back(sinkFor(destination));
+        sinks.back()->set_level(threshold);
+        lowest = std::min(lowest, threshold);
     }
 
     for(const auto& [name, code] : categories) {
         auto logger = make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
-        logger->set_level(threshold);
+        logger->set_level(lowest);
         logger->flush_on(spdlog::level::warn);
         spdlog::drop(name);
         spdlog::register_logger(logger);
@@ -119,5 +155,8 @@ void setup(const std::string& level, const std::string& file) {
             spdlog::set_default_logger(logger);
         }
     }
+
+    // Warnings flush at once; everything else within a second, so a killed process loses little.
+    spdlog::flush_every(std::chrono::seconds(1));
 }
 } // namespace Log

@@ -118,6 +118,26 @@ Settings parseArguments(int argc, char* argv[]) {
             settings.logLevel = value();
         } else if(arg == "--log-file") {
             settings.logFile = value();
+        } else if(arg == "--log-file-level") {
+            settings.logFileLevel = value();
+        } else if(arg == "--log-roll-every") {
+            settings.logRollEvery = value();
+
+            if(settings.logRollEvery != "never" && settings.logRollEvery != "daily" && settings.logRollEvery != "hourly") {
+                throw runtime_error("--log-roll-every must be never, daily or hourly");
+            }
+        } else if(arg == "--log-max-mb") {
+            settings.logMaxMegabytes = toNumber<int>(value(), arg);
+
+            if(settings.logMaxMegabytes < 0) {
+                throw runtime_error("--log-max-mb can't be negative");
+            }
+        } else if(arg == "--log-keep") {
+            settings.logKeep = toNumber<int>(value(), arg);
+
+            if(settings.logKeep < 0) {
+                throw runtime_error("--log-keep can't be negative");
+            }
         } else if(arg == "--no-prerequest") {
             settings.prerequest = false;
         } else if(arg == "--keep-loaded") {
@@ -218,6 +238,6 @@ ConnectionSettings readConnectionSettings(const string& path) {
 
 void printUsage(const string& executable) {
     Log::app()->info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--answer-temperature N] [--phrases FILE] [--home FILE] "
-                 "[--wake-word TEXT] [--follow-up SECONDS] [--gate-while-speaking] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
+                 "[--wake-word TEXT] [--follow-up SECONDS] [--gate-while-speaking] [--log-level LEVEL] [--log-file FILE] [--log-file-level LEVEL] [--log-roll-every never|daily|hourly] [--log-max-mb N] [--log-keep N] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

@@ -108,6 +108,18 @@ struct Settings {
 
     /// Log file appended to alongside the console; empty for console only.
     string logFile;
+
+    /// Lowest level written to the log file; empty uses logLevel.
+    string logFileLevel;
+
+    /// How often the log file starts afresh: "never", "daily" or "hourly".
+    string logRollEvery = "never";
+
+    /// Megabytes the log file may reach before it rolls over, whichever comes first with the period; 0 sets no limit.
+    int logMaxMegabytes = 0;
+
+    /// Old log files kept; 0 keeps them all.
+    int logKeep = 3;
 };
 
 /**
