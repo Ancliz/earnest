@@ -97,6 +97,10 @@ and `--log-file`.
   finish saying within 8 seconds of the reply ending is taken as meant for Earnest, so follow-ups
   don't need the wake word. Each reply restarts that window. `--follow-up SECONDS` changes it, and
   `--follow-up 0` turns it off.
+- **Interrupting:** the microphone stays on while Earnest speaks. Anything meant for it, by the wake
+  word or in the follow-up window, stops the reply; "stop", "be quiet" or "never mind" just stop it.
+  Its own voice is recognised by matching what it said, so its echo is ignored. On loud speakers,
+  `--gate-while-speaking` ignores the microphone until a reply has finished instead.
 - **Noise:** Whisper segments with low confidence are dropped, and transcripts that are only
   fillers or sound labels ("mhm", "[laughter]") are ignored.
 - **In the background:** commands run on their own thread, so it keeps listening while one is

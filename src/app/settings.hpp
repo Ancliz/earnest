@@ -67,6 +67,9 @@ struct Settings {
     /// Whether to ask Ollama never to unload the model; set by --keep-loaded.
     bool keepLoaded = false;
 
+    /// Whether to ignore the microphone while speaking, for speakers whose echo is too loud; set by --gate-while-speaking.
+    bool gateWhileSpeaking = false;
+
     /// Seconds after a reply in which speech needs no wake word; 0 turns follow-ups off.
     double followUpSeconds = 8;
 

@@ -74,6 +74,7 @@ int main() {
     check(!parse({"earnest"}).keepLoaded && parse({"earnest", "--keep-loaded"}).keepLoaded, "keeping the model loaded is off unless asked for");
     check(parse({"earnest"}).answerTemperature == 1.0 && parse({"earnest", "--answer-temperature", "1.5"}).answerTemperature == 1.5, "the answer temperature is selectable");
     check(parse({"earnest"}).followUpSeconds == 8 && parse({"earnest", "--follow-up", "0"}).followUpSeconds == 0, "follow-ups last 8 seconds unless changed");
+    check(!parse({"earnest"}).gateWhileSpeaking && parse({"earnest", "--gate-while-speaking"}).gateWhileSpeaking, "the microphone stays on while speaking unless gated");
     checkThrows([] { parse({"earnest", "--follow-up", "-1"}); }, "a negative follow-up window is rejected");
     checkThrows([] { parse({"earnest", "--answer-temperature", "3"}); }, "an answer temperature above 2 is rejected");
     const auto preview = parse({"earnest", "--parse", "pause kitchen", "--cpu", "model.bin"});

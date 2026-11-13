@@ -13,8 +13,8 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
 - **Microphone capture thread** (`Microphone`): reads PortAudio into a five-second queue.
 - **Main thread** (`listen` in `main.cpp`): reads that queue, splits speech into utterances
   and submits them. It never waits on inference or the network, so speech is still heard
-  while a command runs. While the worker is speaking it drops what it hears, then ignores the
-  microphone until the room has been quiet for the silence period, so replies aren't heard as speech.
+  while a command runs, and while a reply plays. With `--gate-while-speaking` it instead drops what
+  it hears while the worker speaks, until the room has been quiet for the silence period.
 - **Playback thread** (`SpeechService`): plays generated speech in order, so the worker can
   generate the next sentence while the last one plays. The worker counts as speaking until this
   queue is empty, so the microphone stays gated for the whole reply.
@@ -26,7 +26,10 @@ Commands::Result → spokenReply → Speech::SpeechService → Speech::Synthesis
   every queued utterance before returning.
   After a reply or an action, or the wake word on its own, speech finished within `--follow-up`
   seconds (default 8) of the reply ending needs no wake word. Only a reply or an action extends
-  that window, so speech the model chose to ignore can't hold it open.
+  that window, so speech the model chose to ignore can't hold it open. Words matching what it said
+  aloud in the last minute are removed first (`Grammar::withoutEcho`), so its own voice is never taken
+  as speech. Anything accepted while a reply plays interrupts it; the worker can only notice once it
+  has finished generating that reply, usually within a second.
 
 The rule for new work: each slow or blocking resource gets one thread that owns it, and other
 threads hand it work through a queue. There is no event loop, as Whisper, PortAudio and httplib all block.

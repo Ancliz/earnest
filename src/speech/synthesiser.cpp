@@ -41,6 +41,17 @@ void SpeechService::speak(string_view text) {
     ready.notify_one();
 }
 
+void SpeechService::interrupt() {
+    std::lock_guard<std::mutex> lock(queueMutex);
+    unfinished -= waiting.size();
+    waiting.clear();
+    cancelled = true;
+
+    if(unfinished == 0) {
+        lastFinished = Clock::now().time_since_epoch().count();
+    }
+}
+
 void SpeechService::playAll() {
     while(true) {
         std::unique_lock<std::mutex> lock(queueMutex);
@@ -52,12 +63,15 @@ void SpeechService::playAll() {
 
         const auto audio = std::move(waiting.front());
         waiting.pop_front();
+
+        // Cleared while locked, so an interruption either drops this audio or cuts it short.
+        cancelled = false;
         lock.unlock();
         const auto started = Clock::now();
 
         // One failed sentence must not end the thread and silence every later reply.
         try {
-            player.play(audio);
+            player.play(audio, cancelled);
             spdlog::info("Speech played in {} ms", duration_cast<milliseconds>(Clock::now() - started).count());
         } catch(const std::exception& error) {
             spdlog::warn("Cannot play speech: {}", error.what());

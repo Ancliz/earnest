@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -48,9 +49,10 @@ public:
     virtual ~Player() = default;
 
     /**
-     * @brief Play the audio, blocking until it finishes.
+     * @brief Play the audio, blocking until it finishes or stop becomes true.
+     * @param[in] stop Set from another thread to cut the audio short.
      */
-    virtual void play(const Buffer& audio) = 0;
+    virtual void play(const Buffer& audio, const std::atomic<bool>& stop) = 0;
 };
 
 }

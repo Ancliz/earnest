@@ -129,6 +129,106 @@ vector<string> nameWords(string name) {
     return {std::istream_iterator<string>(stream), {}};
 }
 
+namespace {
+/**
+ * @brief Normalized words of a text.
+ */
+vector<string> spokenWords(const string& text) {
+    istringstream stream(normalizeText(text));
+    return {std::istream_iterator<string>(stream), {}};
+}
+
+/**
+ * @brief Whether a transcribed word is the word said, allowing a small mishearing in longer words.
+ */
+bool sameWord(const string& heard, const string& said) {
+    return heard == said || (min(heard.size(), said.size()) >= 4 && editDistance(heard, said, 1) <= 1);
+}
+
+/**
+ * @brief How many heard words from a position follow a sentence from a position, and whether to its end.
+ *
+ * Two heard words may make one said word, as Whisper writes "scare crow" for "scarecrow", and the other way round.
+ */
+std::pair<std::size_t, bool> matchingRun(const vector<string>& heard, std::size_t from, const vector<string>& sentence, std::size_t start) {
+    auto a = from;
+    auto b = start;
+
+    while(a < heard.size() && b < sentence.size()) {
+        if(sameWord(heard[a], sentence[b])) {
+            ++a;
+            ++b;
+        } else if(a + 1 < heard.size() && sameWord(heard[a] + heard[a + 1], sentence[b])) {
+            a += 2;
+            ++b;
+        } else if(b + 1 < sentence.size() && sameWord(heard[a], sentence[b] + sentence[b + 1])) {
+            ++a;
+            b += 2;
+        } else {
+            break;
+        }
+    }
+
+    return {a - from, b == sentence.size()};
+}
+} // namespace
+
+string withoutEcho(const string& text, const vector<string>& said) {
+    const auto words = spokenWords(text);
+    vector<vector<string>> sentences;
+
+    for(const auto& sentence : said) {
+        sentences.push_back(spokenWords(sentence));
+    }
+
+    vector<bool> echo(words.size(), false);
+    bool found = false;
+
+    for(std::size_t i = 0; i < words.size();) {
+        std::size_t longest = 0;
+        bool ending = false;
+
+        for(const auto& sentence : sentences) {
+            for(std::size_t j = 0; j < sentence.size(); ++j) {
+                const auto [length, toEnd] = matchingRun(words, i, sentence, j);
+
+                if(length > longest || (length == longest && length > 0 && toEnd && !ending)) {
+                    longest = length;
+                    ending = toEnd;
+                }
+            }
+        }
+
+        const bool own = longest >= 2 && (longest == words.size() || longest >= 4 || (i == 0 && ending));
+
+        if(own) {
+            std::fill(echo.begin() + i, echo.begin() + i + longest, true);
+            found = true;
+        }
+
+        i += own ? longest : 1;
+    }
+
+    if(!found) {
+        return text;
+    }
+
+    string rest;
+
+    for(std::size_t i = 0; i < words.size(); ++i) {
+        if(!echo[i]) {
+            rest += (rest.empty() ? "" : " ") + words[i];
+        }
+    }
+
+    return rest;
+}
+
+bool asksForQuiet(const string& text) {
+    static const regex quiet(R"(^(?:(?:ok|okay|alright|all right) )?(?:stop|stop talking|stop it|be quiet|quiet|hush|shush|shut up|enough|that'?s enough|that will do|cancel|never mind|nevermind|forget it)(?: please)?$)");
+    return std::regex_match(normalizeText(text), quiet);
+}
+
 bool refersBack(const string& name) {
     static const regex reference("it|that|this|them|that one|this one|music|sound|audio|volume");
     return std::regex_match(name, reference);

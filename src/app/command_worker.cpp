@@ -54,17 +54,6 @@ void learnDeviceNames(Speech::Transcriber& transcriber, const Commands::Devices&
     transcriber.setVocabulary(names);
 }
 
-/**
- * @brief Say the text; by now the command has run or been refused, so a speech failure is only logged.
- */
-void say(Speech::SpeechService& speech, const string& text) {
-    try {
-        speech.speak(text);
-    } catch(const std::exception& error) {
-        spdlog::warn("Cannot speak: {}", error.what());
-    }
-}
-
 CommandWorker::CommandWorker(Speech::Transcriber& transcriber, Commands::Parser& parser, Commands::Executor& executor,
                              Config::Configuration& configuration, Speech::SpeechService& speech, string wakeWord,
                              ExchangeObserver observer, std::chrono::milliseconds followUp)
@@ -148,6 +137,33 @@ void CommandWorker::enter(Stage next) {
     stage = next;
 }
 
+void CommandWorker::speakAloud(const string& text) {
+    recentlySaid.emplace_back(std::chrono::steady_clock::now(), text);
+
+    // By now the command has run or been refused, so a speech failure is only logged.
+    try {
+        speech.speak(text);
+    } catch(const std::exception& error) {
+        spdlog::warn("Cannot speak: {}", error.what());
+    }
+}
+
+std::vector<string> CommandWorker::saidRecently() {
+    const auto cutoff = std::chrono::steady_clock::now() - std::chrono::minutes(1);
+
+    while(!recentlySaid.empty() && recentlySaid.front().first < cutoff) {
+        recentlySaid.pop_front();
+    }
+
+    std::vector<string> said;
+
+    for(const auto& entry : recentlySaid) {
+        said.push_back(entry.second);
+    }
+
+    return said;
+}
+
 bool CommandWorker::followsUp(std::chrono::steady_clock::time_point heardAt) const {
     if(followUp.count() <= 0 || !repliedAt) {
         return false;
@@ -155,7 +171,7 @@ bool CommandWorker::followsUp(std::chrono::steady_clock::time_point heardAt) con
 
     // Speech heard before the conversation began, even if handled after, wasn't part of it.
     const auto from = std::max(*repliedAt, speech.finishedAt());
-    return heardAt > conversationHeardAt && heardAt <= from + followUp;
+    return heardAt > conversationHeardAt && (speech.isBusy() || heardAt <= from + followUp);
 }
 
 void CommandWorker::keepListening(std::chrono::steady_clock::time_point heardAt) {
@@ -178,18 +194,37 @@ void CommandWorker::handle(Queued utterance) {
     }
 
     spdlog::info("Input: {}", heard);
-    auto text = Grammar::stripWakeWord(heard, wakeWord);
+    const auto words = Grammar::withoutEcho(heard, saidRecently());
+
+    if(words.empty()) {
+        spdlog::info("Ignoring the assistant's own voice");
+        return;
+    } else if(words != heard) {
+        spdlog::info("Heard past the assistant's own voice: {}", words);
+    }
+
+    auto text = Grammar::stripWakeWord(words, wakeWord);
 
     if(!text && followsUp(utterance.heardAt)) {
         spdlog::info("Taking this as a follow-up, without the wake word");
-        text = Grammar::stripWakeWord(heard, "");
+        text = Grammar::stripWakeWord(words, "");
     }
 
     if(!text) {
-        spdlog::debug("Ignoring speech without the wake word: {}", heard);
+        spdlog::debug("Ignoring speech without the wake word: {}", words);
         return;
-    } else if(text->empty()) {
-        spdlog::info("Wake word heard with no command");
+    }
+
+    // Anything meant for the assistant while it talks cuts the reply short.
+    const bool interrupting = speech.isBusy();
+
+    if(interrupting) {
+        spdlog::info("Interrupting the reply");
+        speech.interrupt();
+    }
+
+    if(text->empty() || (interrupting && Grammar::asksForQuiet(*text))) {
+        spdlog::info(text->empty() ? "Wake word heard with no command" : "Asked to stop talking");
         keepListening(utterance.heardAt);
         return;
     }
@@ -213,7 +248,7 @@ void CommandWorker::handle(Queued utterance) {
     context.onSentence = [&](const string& sentence) {
         streamed = true;
         enter(Stage::Speaking);
-        say(speech, sentence);
+        speakAloud(sentence);
     };
     exchange.parsed = parser.parse(*text, context);
     logParsed(exchange.parsed);
@@ -231,7 +266,7 @@ void CommandWorker::handle(Queued utterance) {
 
     if(!exchange.spoken.empty() && !streamed) {
         enter(Stage::Speaking);
-        say(speech, exchange.spoken);
+        speakAloud(exchange.spoken);
     }
 
     memory.remember(exchange);

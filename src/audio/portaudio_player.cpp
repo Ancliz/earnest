@@ -36,7 +36,7 @@ PortAudioPlayer::~PortAudioPlayer() {
     Pa_Terminate();
 }
 
-void PortAudioPlayer::play(const Buffer& buffer) {
+void PortAudioPlayer::play(const Buffer& buffer, const std::atomic<bool>& stop) {
     if(buffer.samples.empty()) {
         return;
     }
@@ -53,7 +53,8 @@ void PortAudioPlayer::play(const Buffer& buffer) {
     check(Pa_StartStream(stream.get()));
     const auto totalFrames = buffer.samples.size() / buffer.channels;
 
-    for(size_t offset = 0; offset < totalFrames;) {
+    // Stopping is checked between writes, so a stop takes effect within one write.
+    for(size_t offset = 0; offset < totalFrames && !stop;) {
         const auto frames = static_cast<unsigned long>(std::min(framesPerWrite, totalFrames - offset));
         const auto error = Pa_WriteStream(stream.get(), buffer.samples.data() + offset * buffer.channels, frames);
 
@@ -65,7 +66,7 @@ void PortAudioPlayer::play(const Buffer& buffer) {
         offset += frames;
     }
 
-    // Wait for the final buffered samples to finish playing.
-    check(Pa_StopStream(stream.get()));
+    // Let the final buffered samples finish playing, unless stopped, when they are dropped.
+    check(stop ? Pa_AbortStream(stream.get()) : Pa_StopStream(stream.get()));
 }
 } // namespace Audio

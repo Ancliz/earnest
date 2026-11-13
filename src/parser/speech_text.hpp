@@ -33,6 +33,23 @@ string normalizeText(const string& text);
 string normalizeName(const string& name);
 
 /**
+ * @brief The heard text without the assistant's own words, which a microphone near the speaker picks up.
+ *
+ * A run of words matching something said recently is taken as echo when it is the whole text, four or
+ * more words, or the end of a sentence at the very start, as when someone starts talking before the
+ * reply finishes. Shorter runs are kept, as a follow-up often repeats a few words of the answer.
+ *
+ * @param[in] said What the assistant said recently, one sentence per entry.
+ * @return text unchanged if none of it is echo, "" if all of it is, or otherwise the rest, normalized.
+ */
+string withoutEcho(const string& text, const std::vector<string>& said);
+
+/**
+ * @brief Whether normalized text only asks the assistant to stop talking, such as "stop" or "never mind".
+ */
+bool asksForQuiet(const string& text);
+
+/**
  * @brief Whether a normalized device name just points at what was being talked about, like "it" or "the music".
  */
 bool refersBack(const string& name);

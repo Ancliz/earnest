@@ -20,6 +20,7 @@ using Commands::Device;
 using Commands::json;
 using Grammar::isNonSpeech;
 using Grammar::stripWakeWord;
+using Grammar::withoutEcho;
 using std::string;
 
 namespace {
@@ -276,6 +277,16 @@ int main() {
     FallbackParser hybrid(parser, model);
     check(hybrid.parse("add wonderwall", music) == request, "the hybrid parser prefers phrase rules");
     check(hybrid.parse("play the q990b", music)->service == "media_play", "the hybrid parser falls back when no rule decides");
+
+    const std::vector<string> joke = {"Why did the scarecrow win an award?", "Because he was outstanding in his field, sir."};
+    check(withoutEcho("Because he was outstanding in his field, sir.", joke).empty(), "the assistant's own sentence is echo");
+    check(withoutEcho("why did the scare crow win an award", joke).empty(), "echo survives a split word");
+    check(withoutEcho("outstanding in his field sir jarvis explain it", joke) == "jarvis explain it", "talking over the end of a reply keeps what was said after it");
+    check(withoutEcho("jarvis because he was outstanding in his field what", joke) == "jarvis what", "a long run of echo is removed from the middle");
+    check(withoutEcho("paris sir what about spain", {"Paris, sir."}) == "what about spain", "a short sentence end at the start is echo");
+    check(withoutEcho("the capital of spain", {"The capital of France is Paris, sir."}) == "the capital of spain", "a follow-up repeating a few words of the answer is kept");
+    check(withoutEcho("Turn off the Q800.", {}) == "Turn off the Q800.", "nothing said leaves the text unchanged");
+    check(Grammar::asksForQuiet("Stop.") && Grammar::asksForQuiet("okay, never mind") && Grammar::asksForQuiet("that's enough") && !Grammar::asksForQuiet("stop the music"), "asking for quiet is told from other requests");
 
     std::cout << checks << " parser checks passed\n";
 }

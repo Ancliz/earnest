@@ -79,7 +79,7 @@ private:
     /// Speech recognizer, used on the worker thread only.
     Speech::Transcriber& transcriber;
 
-    /// Says the outcome of each command; speak() is used on the worker thread only.
+    /// Says the outcome of each command; speak() and interrupt() are used on the worker thread only.
     Speech::SpeechService& speech;
 
     /// Command parser, used on the worker thread only.
@@ -96,6 +96,9 @@ private:
 
     /// How long after a reply speech counts as meant for the assistant without the wake word; 0 turns this off.
     std::chrono::milliseconds followUp;
+
+    /// What was said aloud in the last minute, to tell the assistant's own voice from the user's.
+    std::deque<std::pair<std::chrono::steady_clock::time_point, string>> recentlySaid;
 
     /// When the speech that started the current conversation was heard; later speech can follow it up.
     std::chrono::steady_clock::time_point conversationHeardAt;
@@ -149,6 +152,16 @@ private:
      * @brief Move to a stage and log it.
      */
     void enter(Stage next);
+
+    /**
+     * @brief Say text aloud, remembering it so its echo can be recognised; a failure is only logged.
+     */
+    void speakAloud(const string& text);
+
+    /**
+     * @brief What was said aloud in the last minute, one sentence per entry.
+     */
+    std::vector<string> saidRecently();
 
     /**
      * @brief Whether speech heard at this time follows up the conversation, so needs no wake word.

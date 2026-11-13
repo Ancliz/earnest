@@ -149,7 +149,7 @@ public:
  */
 class SilentPlayer final : public Audio::Player {
 public:
-    void play(const Audio::Buffer&) override {}
+    void play(const Audio::Buffer&, const std::atomic<bool>&) override {}
 };
 
 /**
@@ -186,7 +186,7 @@ public:
 };
 
 /**
- * @brief Holds playback until opened, records what was played, and fails on a sample rate of 1.
+ * @brief Holds playback until opened or stopped, records what was played, and fails on a sample rate of 1.
  */
 class GatedPlayer final : public Audio::Player {
     std::mutex playedMutex;
@@ -194,10 +194,19 @@ class GatedPlayer final : public Audio::Player {
 
 public:
     std::atomic<bool> open{false};
+    std::atomic<int> started{0};
+    std::atomic<int> stopped{0};
 
-    void play(const Audio::Buffer& audio) override {
-        while(!open) {
+    void play(const Audio::Buffer& audio, const std::atomic<bool>& stop) override {
+        ++started;
+
+        while(!open && !stop) {
             std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        if(stop) {
+            ++stopped;
+            return;
         }
 
         if(audio.sampleRate == 1) {
@@ -308,7 +317,7 @@ public:
     /// Whether the worker said it was speaking during playback.
     std::atomic<bool> sawSpeaking{false};
 
-    void play(const Audio::Buffer&) override { sawSpeaking = worker.load()->isSpeaking(); }
+    void play(const Audio::Buffer&, const std::atomic<bool>&) override { sawSpeaking = worker.load()->isSpeaking(); }
 };
 
 /**
@@ -398,6 +407,39 @@ vector<string> whatIsStreamed() {
     }
 
     return synthesiser.said;
+}
+
+/**
+ * @brief Interrupt a reply that is still playing, and return what ran and how many sentences were cut short.
+ */
+std::pair<vector<string>, int> interruptWith(const string& interruption) {
+    ScriptedTranscriber transcriber;
+    transcriber.texts = {"jarvis kitchen", interruption};
+    EchoParser parser;
+    RecordingExecutor executor;
+    Config::Configuration configuration(Config::defaultPhraseFile, [](const json&) {});
+    SilentSynthesiser synthesiser;
+    GatedPlayer player;
+    Speech::SpeechService speech(synthesiser, player);
+
+    {
+        CommandWorker worker(transcriber, parser, executor, configuration, speech, "jarvis", {}, milliseconds(3000));
+        worker.submit(utterance(0));
+
+        for(int i = 0; i < 2000 && player.started == 0; ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        worker.submit(utterance(1));
+
+        for(int i = 0; i < 1000 && player.stopped == 0; ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        player.open = true;
+    }
+
+    return {executor.executed, player.stopped};
 }
 
 /**
@@ -500,6 +542,40 @@ int main() {
     }
 
     check(gated.heard() == vector<int>{100, 200, 300}, "shutting down plays what is still queued");
+
+    GatedPlayer held;
+
+    {
+        Speech::SpeechService speech(numbered, held);
+        speech.speak("100");
+        speech.speak("200");
+
+        for(int i = 0; i < 2000 && held.started == 0; ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        speech.interrupt();
+
+        for(int i = 0; i < 2000 && speech.isBusy(); ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        check(!speech.isBusy() && held.stopped == 1 && held.heard().empty(), "interrupting stops the speech playing and drops the rest");
+        held.open = true;
+        speech.speak("300");
+
+        for(int i = 0; i < 2000 && speech.isBusy(); ++i) {
+            std::this_thread::sleep_for(milliseconds(1));
+        }
+
+        check(held.heard() == vector<int>{300}, "speech after an interruption plays");
+    }
+
+    check(interruptWith("jarvis stop") == std::pair<vector<string>, int>{{"light.kitchen"}, 1}, "asking it to stop cuts the reply short without running anything");
+    check(interruptWith("jarvis lounge") == std::pair<vector<string>, int>{{"light.kitchen", "light.lounge"}, 1}, "the wake word interrupts a reply with a new request");
+    check(interruptWith("lounge") == std::pair<vector<string>, int>{{"light.kitchen", "light.lounge"}, 1}, "speech in the follow-up window interrupts too");
+    check(interruptWith("command sent sir") == std::pair<vector<string>, int>{{"light.kitchen"}, 0}, "the assistant's own voice neither interrupts nor counts as a follow-up");
+    check(runScript({"jarvis stop"}, "jarvis") == vector<string>{"light.stop"}, "\"stop\" while it isn't talking is a request like any other");
 
     const Command light{"light", "turn_on", "light.a", json::object(), "Turning it on."};
     const Command volume{"media_player", "volume_set", "media_player.a", {{"volume_level", 0.3}}, "Louder."};

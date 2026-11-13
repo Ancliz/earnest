@@ -65,6 +65,9 @@ class SpeechService {
     /// Audio queued or playing.
     std::atomic<std::size_t> unfinished{0};
 
+    /// Set to cut short the audio playing; cleared, with the queue locked, as each one starts.
+    std::atomic<bool> cancelled{false};
+
     /// When the queue last ran empty, as a steady_clock count; 0 before anything has played.
     std::atomic<std::chrono::steady_clock::rep> lastFinished{0};
 
@@ -108,6 +111,11 @@ public:
      * @brief Whether any speech is queued or playing; safe from any thread.
      */
     bool isBusy() const { return unfinished > 0; }
+
+    /**
+     * @brief Stop the speech playing and drop what is queued, within one write of audio. Safe from any thread.
+     */
+    void interrupt();
 
     /**
      * @brief When the last speech finished playing; the clock's epoch if none has. Safe from any thread.

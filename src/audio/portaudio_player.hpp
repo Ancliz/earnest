@@ -31,6 +31,6 @@ public:
      * @brief Play the buffer; an empty one plays nothing.
      * @throws std::runtime_error If the buffer is invalid or the device reports an error.
      */
-    void play(const Buffer& buffer) override;
+    void play(const Buffer& buffer, const std::atomic<bool>& stop) override;
 };
 } // namespace Audio
