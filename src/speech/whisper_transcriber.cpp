@@ -4,6 +4,7 @@
  */
 
 #include "whisper_transcriber.hpp"
+#include "log/log.hpp"
 
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -75,7 +76,7 @@ string WhisperTranscriber::transcribe(Audio::Samples utterance) {
 
         const auto confidence = tokens ? total / tokens : 0.0f;
         const bool speech = confidence >= minConfidence;
-        spdlog::debug("Whisper segment \"{}\": confidence {:.2f}{}", words, confidence, speech ? "" : " (dropped)");
+        Log::hear()->debug("Whisper segment \"{}\": confidence {:.2f}{}", words, confidence, speech ? "" : " (dropped)");
 
         if(speech) {
             text += words;

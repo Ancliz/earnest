@@ -24,6 +24,11 @@ target_compile_definitions(configuration PUBLIC SMARTHOME_PHRASE_FILE="${CMAKE_C
 target_include_directories(configuration PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(configuration PUBLIC nlohmann_json::nlohmann_json PRIVATE PkgConfig::YAML)
 
+# One logger per category; libraries log through it, and the application sets where it goes.
+add_library(logging src/log/log.cpp)
+target_include_directories(logging PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(logging PUBLIC spdlog::spdlog)
+
 add_library(speech-text src/parser/speech_text.cpp)
 target_link_libraries(speech-text PUBLIC commands)
 
@@ -31,30 +36,30 @@ add_library(home-registry src/home/registry.cpp src/home/resolver.cpp)
 target_link_libraries(home-registry PUBLIC commands PRIVATE speech-text)
 
 add_library(regex-parser src/parser/regex_parser.cpp src/parser/phrase_rules.cpp)
-target_link_libraries(regex-parser PUBLIC commands home-registry speech-text)
+target_link_libraries(regex-parser PUBLIC commands home-registry speech-text logging)
 
 add_library(home-assistant src/home_assistant/home_assistant.cpp src/home_assistant/control_policy.cpp)
-target_link_libraries(home-assistant PUBLIC commands spdlog::spdlog Threads::Threads)
+target_link_libraries(home-assistant PUBLIC commands logging Threads::Threads)
 
 add_library(ollama-parser src/ollama/ollama.cpp src/ollama/ollama_parser.cpp src/ollama/answer_stream.cpp)
-target_link_libraries(ollama-parser PUBLIC commands regex-parser spdlog::spdlog Threads::Threads)
+target_link_libraries(ollama-parser PUBLIC commands regex-parser logging Threads::Threads)
 
 add_library(audio src/audio/utterance_buffer.cpp)
 target_include_directories(audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-add_library(app-settings src/app/settings.cpp src/app/logging.cpp)
-target_link_libraries(app-settings PUBLIC configuration spdlog::spdlog)
+add_library(app-settings src/app/settings.cpp)
+target_link_libraries(app-settings PUBLIC configuration logging)
 
 add_library(spotify-executor src/spotify/spotify.cpp)
-target_link_libraries(spotify-executor PUBLIC commands spdlog::spdlog Threads::Threads)
+target_link_libraries(spotify-executor PUBLIC commands logging Threads::Threads)
 
 add_library(executor-router src/commands/executor_router.cpp)
-target_link_libraries(executor-router PUBLIC commands spdlog::spdlog)
+target_link_libraries(executor-router PUBLIC commands logging)
 
 add_library(command-worker src/app/command_worker.cpp src/speech/synthesiser.cpp)
-target_link_libraries(command-worker PUBLIC commands configuration regex-parser audio spdlog::spdlog Threads::Threads)
+target_link_libraries(command-worker PUBLIC commands configuration regex-parser audio logging Threads::Threads)
 
-foreach(target configuration speech-text home-registry regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
+foreach(target logging configuration speech-text home-registry regex-parser home-assistant spotify-executor executor-router audio app-settings command-worker)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 

@@ -4,6 +4,7 @@
  */
 
 #include "ollama_parser.hpp"
+#include "log/log.hpp"
 #include "answer_stream.hpp"
 #include "home/resolver.hpp"
 #include "parser/speech_text.hpp"
@@ -227,7 +228,7 @@ string groundDevice(const string& heard, const string& request, Command& command
     }
 
     if(found.entity != command.entity) {
-        spdlog::debug("Correcting the model's device {} to {}", command.entity, found.entity);
+        Log::think()->debug("Correcting the model's device {} to {}", command.entity, found.entity);
         command.entity = found.entity;
     }
 
@@ -376,7 +377,7 @@ void correctServiceDomain(Command& command, const Context& context) {
     }
 
     if(owners.size() == 1 && owners[0] != command.domain) {
-        spdlog::debug("Correcting the model's {}.{} to domain {}", command.domain, command.service, owners[0]);
+        Log::think()->debug("Correcting the model's {}.{} to domain {}", command.domain, command.service, owners[0]);
         command.domain = owners[0];
     }
 }
@@ -389,7 +390,7 @@ void correctWrongDomain(Command& command, const string& request, const Context& 
     const auto target = std::find_if(context.devices.begin(), context.devices.end(), named);
 
     if(target != context.devices.end() && target->domain == "spotify" && command.domain != "spotify" && movesPlayback(request)) {
-        spdlog::debug("Correcting the model's {}.{} to spotify.cast", command.domain, command.service);
+        Log::think()->debug("Correcting the model's {}.{} to spotify.cast", command.domain, command.service);
         command.domain = "spotify";
         command.service = "cast";
     }
@@ -442,7 +443,7 @@ void keepAllowedFields(Command& command, const Commands::ServiceFields& fields) 
         if(fields.allowed.count(field.key())) {
             ++field;
         } else {
-            spdlog::debug("Dropping unexpected data field: {}", field.key());
+            Log::think()->debug("Dropping unexpected data field: {}", field.key());
             field = command.data.erase(field);
         }
     }
@@ -500,7 +501,7 @@ bool convertPercentages(Command& command, const string& request) {
         const auto percent = command.data[field].get<double>();
 
         if(!wasSpoken(percent, request)) {
-            spdlog::warn("Rejecting {} {}: not a number in the request", field, percent);
+            Log::think()->warn("Rejecting {} {}: not a number in the request", field, percent);
             return false;
         }
 
@@ -578,7 +579,7 @@ ParseResult OllamaParser::parse(const string& text, const Context& context) {
             const auto unbacked = groundDevice(normalizeName(content.at("heard").get<string>()), request, command, context, Home::Resolver(registry, context));
 
             if(!unbacked.empty()) {
-                spdlog::warn("Rejecting model's device choice: {}", unbacked);
+                Log::think()->warn("Rejecting model's device choice: {}", unbacked);
                 return ParseResult::refused(unbacked);
             }
         } else {
@@ -590,7 +591,7 @@ ParseResult OllamaParser::parse(const string& text, const Context& context) {
         const auto objection = objectionTo(command, content.value("heard", ""), request, *fields);
 
         if(!objection.empty()) {
-            spdlog::warn("Rejecting request \"{}\": {}", request, objection);
+            Log::think()->warn("Rejecting request \"{}\": {}", request, objection);
             return ParseResult::refused(objection);
         }
 
@@ -602,7 +603,7 @@ ParseResult OllamaParser::parse(const string& text, const Context& context) {
 
         return command;
     } catch(const std::exception& error) {
-        spdlog::error("Ollama parse failed: {}", error.what());
+        Log::think()->error("Ollama parse failed: {}", error.what());
         return ParseResult::refused("I'm sorry sir, I'm having a hard time thinking at the moment.");
     }
 }

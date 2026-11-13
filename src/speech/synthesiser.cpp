@@ -4,6 +4,7 @@
  */
 
 #include "synthesiser.hpp"
+#include "log/log.hpp"
 
 #include <chrono>
 #include <spdlog/spdlog.h>
@@ -26,11 +27,11 @@ SpeechService::~SpeechService() {
 }
 
 void SpeechService::speak(string_view text) {
-    spdlog::info("Speaking: {}", text);
+    Log::say()->info("{}", text);
     const auto started = Clock::now();
     auto audio = synthesiser.generate(text);
     const auto frames = audio.channels ? audio.samples.size() / audio.channels : 0;
-    spdlog::info("Speech generated in {} ms: {} frames, {} Hz, {} channel(s)", duration_cast<milliseconds>(Clock::now() - started).count(), frames, audio.sampleRate, audio.channels);
+    Log::say()->debug("Generated in {} ms: {} frames, {} Hz, {} channel(s)", duration_cast<milliseconds>(Clock::now() - started).count(), frames, audio.sampleRate, audio.channels);
     ++unfinished;
 
     {
@@ -72,9 +73,9 @@ void SpeechService::playAll() {
         // One failed sentence must not end the thread and silence every later reply.
         try {
             player.play(audio, cancelled);
-            spdlog::info("Speech played in {} ms", duration_cast<milliseconds>(Clock::now() - started).count());
+            Log::say()->debug("Played in {} ms", duration_cast<milliseconds>(Clock::now() - started).count());
         } catch(const std::exception& error) {
-            spdlog::warn("Cannot play speech: {}", error.what());
+            Log::say()->warn("Cannot play speech: {}", error.what());
         }
 
         if(--unfinished == 0) {

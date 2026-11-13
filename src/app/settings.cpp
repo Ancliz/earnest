@@ -4,6 +4,7 @@
  */
 
 #include "settings.hpp"
+#include "log/log.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -216,7 +217,7 @@ ConnectionSettings readConnectionSettings(const string& path) {
 }
 
 void printUsage(const string& executable) {
-    spdlog::info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--answer-temperature N] [--phrases FILE] [--home FILE] "
+    Log::app()->info("Usage: {} [model.bin] [--threads N] [--threshold RMS] [--silence-ms N] [--cpu] [--parser hybrid|ollama|regex] [--ollama-model NAME] [--no-prerequest] [--keep-loaded] [--answer-temperature N] [--phrases FILE] [--home FILE] "
                  "[--wake-word TEXT] [--follow-up SECONDS] [--gate-while-speaking] [--log-level LEVEL] [--log-file FILE] [--list-devices | --check-phrases | --parse TEXT] [--help]",
                  executable);
 }

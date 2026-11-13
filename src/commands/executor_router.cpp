@@ -4,6 +4,7 @@
  */
 
 #include "executor_router.hpp"
+#include "log/log.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -21,7 +22,7 @@ Devices ExecutorRouter::discoverDevices() {
             const auto found = executor->discoverDevices();
             devices.insert(devices.end(), found.begin(), found.end());
         } catch(const std::exception& error) {
-            spdlog::warn("Skipping unreachable devices: {}", error.what());
+            Log::act()->warn("Skipping unreachable devices: {}", error.what());
         }
     }
 
@@ -41,7 +42,7 @@ ServiceCatalogue ExecutorRouter::discoverServices() {
                 }
             }
         } catch(const std::exception& error) {
-            spdlog::warn("Skipping unreachable services: {}", error.what());
+            Log::act()->warn("Skipping unreachable services: {}", error.what());
         }
     }
 

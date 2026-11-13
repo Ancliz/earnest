@@ -4,6 +4,7 @@
  */
 
 #include "settings.hpp"
+#include "log/log.hpp"
 #include "command_worker.hpp"
 #include "commands/executor_router.hpp"
 #include "parser/fallback_parser.hpp"
@@ -12,7 +13,6 @@
 #include "home_assistant/home_assistant.hpp"
 #include "ollama/ollama_parser.hpp"
 #include "parser/regex_parser.hpp"
-#include "app/logging.hpp"
 #include "speech/whisper_transcriber.hpp"
 #include "spotify/spotify.hpp"
 #include "speech/chatterbox_synthesiser.hpp"
@@ -48,7 +48,7 @@ void requestStop(int) {
  */
 void printDevices(const Devices& devices) {
     for(const auto& device : devices) {
-        spdlog::info("{} | {} | {}{}", device.entityId, device.name, device.state, device.room.empty() ? "" : " | " + device.room);
+        Log::act()->info("{} | {} | {}{}", device.entityId, device.name, device.state, device.room.empty() ? "" : " | " + device.room);
     }
 }
 
@@ -57,9 +57,13 @@ void printDevices(const Devices& devices) {
  * @return Whether the text was answered, or recognized as a command and accepted.
  */
 bool previewText(const string& text, Parser& parser, Executor& executor) {
-    spdlog::info("Input: {}", text);
+    Log::hear()->info("{}", text);
     const auto command = parser.parse(text, {executor.discoverDevices(), executor.discoverServices()});
     logParsed(command);
+    if(!command.answer.empty()) {
+        Log::say()->info("{}", command.answer);
+    }
+
     return command ? logResult(executor.preview(*command), true) : !command.answer.empty();
 }
 
@@ -80,7 +84,7 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
     const auto followUp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(settings.followUpSeconds));
     CommandWorker worker(transcriber, parser, executor, configuration, speech, settings.wakeWord, {}, followUp);
     Samples block;
-    spdlog::info("Listening. Press Ctrl+C to stop.");
+    Log::app()->info("Listening. Press Ctrl+C to stop.");
 
     while(running) {
         bool discontinuity = false;
@@ -98,9 +102,9 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
         auto utterance = utterances.append(block, discontinuity);
 
         if(utterances.event() == UtteranceBuffer::Event::Discontinuity) {
-            spdlog::warn("Microphone overflow: discarding incomplete command");
+            Log::hear()->warn("Microphone overflow: discarding incomplete command");
         } else if(utterances.event() == UtteranceBuffer::Event::TooLong) {
-            spdlog::warn("Utterance exceeded 15 seconds; waiting for silence");
+            Log::hear()->warn("Utterance exceeded 15 seconds; waiting for silence");
         }
 
         if(utterance) {
@@ -122,7 +126,7 @@ void listen(const Settings& settings, Transcriber& transcriber, Speech::Synthesi
 int main(int argc, char* argv[]) {
     try {
         const auto settings = parseArguments(argc, argv);
-        setupLogging(settings.logLevel, settings.logFile);
+        Log::setup(settings.logLevel, settings.logFile);
 
         if(settings.mode == Mode::Help) {
             printUsage(argv[0]);
@@ -147,7 +151,7 @@ int main(int argc, char* argv[]) {
         }, settings.homeFile);
 
         if(settings.mode == Mode::CheckPhrases) {
-            spdlog::info("Phrase configuration is valid");
+            Log::app()->info("Phrase configuration is valid");
             return 0;
         }
 
@@ -171,7 +175,7 @@ int main(int argc, char* argv[]) {
         listen(settings, *transcriber, synthesiser, parser, *executor, configuration);
         
     } catch(const std::exception& error) {
-        spdlog::error(error.what());
+        Log::app()->error(error.what());
         return 1;
     }
 

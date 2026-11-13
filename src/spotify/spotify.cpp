@@ -4,6 +4,7 @@
  */
 
 #include "spotify.hpp"
+#include "log/log.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -184,7 +185,7 @@ void Spotify::cast(const string& deviceId) {
         send("PUT", "/transfer", {{"device_id", deviceId}, {"play", true}});
     } catch(const std::exception& error) {
         // Spotify can report 404 for a transfer that still goes through, so trust the device's state.
-        spdlog::debug("Transfer reported failure, checking the device: {}", error.what());
+        Log::act()->debug("Transfer reported failure, checking the device: {}", error.what());
 
         if(!becomesActive(deviceId)) {
             throw;

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "commands/command.hpp"
+#include "log/log.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -43,7 +44,7 @@ public:
      */
     Commands::ParseResult parse(const Commands::string& text, const Commands::Context& context) override {
         if(auto command = first.parse(text, context)) {
-            spdlog::debug("Matched by a phrase rule");
+            Log::think()->debug("Matched by a phrase rule");
             return command;
         }
 

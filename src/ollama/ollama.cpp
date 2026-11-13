@@ -4,6 +4,7 @@
  */
 
 #include "ollama.hpp"
+#include "log/log.hpp"
 
 #include <chrono>
 #include <spdlog/spdlog.h>
@@ -25,13 +26,13 @@ void logTiming(const char* request, Clock::time_point start, const json& reply) 
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
 
     if(!reply.is_object() || !reply.contains("total_duration")) {
-        spdlog::info("Ollama {} ended after {} ms", request, elapsed);
+        Log::think()->debug("Ollama {} ended after {} ms", request, elapsed);
         return;
     }
 
     const auto& report = reply;
     const auto milliseconds = [&](const char* field) { return report.value(field, 0LL) / 1000000; };
-    spdlog::info("Ollama {} took {} ms: load {} ms, prompt {} ms ({} tokens), generating {} ms ({} tokens)", request, elapsed, milliseconds("load_duration"),
+    Log::think()->debug("Ollama {} took {} ms: load {} ms, prompt {} ms ({} tokens), generating {} ms ({} tokens)", request, elapsed, milliseconds("load_duration"),
                  milliseconds("prompt_eval_duration"), report.value("prompt_eval_count", 0), milliseconds("eval_duration"), report.value("eval_count", 0));
 }
 } // namespace
@@ -55,7 +56,7 @@ json OllamaClient::chat(const json& messages, const ordered_json& format, double
         request["keep_alive"] = -1;
     }
 
-    spdlog::debug("Ollama request:\n{}", request.dump(2));
+    Log::think()->trace("Ollama request:\n{}", request.dump(2));
     string partial;
     string text;
     json report;
@@ -129,7 +130,7 @@ void OllamaClient::sendPrerequest(const string& systemStart) {
     if(!response) {
         throw runtime_error("Cannot query Ollama: " + httplib::to_string(response.error()));
     } else if(response->status != 200) {
-        spdlog::warn("Ollama prerequest returned HTTP {}; continuing without it", response->status);
+        Log::think()->warn("Ollama prerequest returned HTTP {}; continuing without it", response->status);
     } else {
         logTiming("prerequest", start, json::parse(response->body, nullptr, false));
     }

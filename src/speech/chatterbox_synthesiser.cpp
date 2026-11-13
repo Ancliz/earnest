@@ -4,6 +4,7 @@
  */
 
 #include "chatterbox_synthesiser.hpp"
+#include "log/log.hpp"
 #include "audio/wav.hpp"
 
 #include <nlohmann/json.hpp>
@@ -22,7 +23,7 @@ ChatterboxSynthesiser::ChatterboxSynthesiser(const string& url, const string& vo
 }
 
 Buffer ChatterboxSynthesiser::generate(string_view text) {
-    spdlog::debug("Requesting speech: {} bytes of text", text.size());
+    Log::say()->debug("Requesting speech: {} bytes of text", text.size());
     const nlohmann::json body = {{"input", string(text)}, {"voice", voice}};
     const auto response = client.Post("/v1/audio/speech", body.dump(), "application/json");
 
@@ -32,7 +33,7 @@ Buffer ChatterboxSynthesiser::generate(string_view text) {
         throw runtime_error("Failed to generate speech: HTTP " + std::to_string(response->status) + ": " + response->body);
     }
 
-    spdlog::debug("Speech server returned {} bytes", response->body.size());
+    Log::say()->debug("Speech server returned {} bytes", response->body.size());
     return Audio::decodeWav(response->body);
 }
 } // namespace Speech

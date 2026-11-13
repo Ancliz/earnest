@@ -4,6 +4,7 @@
  */
 
 #include "command_worker.hpp"
+#include "log/log.hpp"
 #include "spoken_reply.hpp"
 #include "parser/speech_text.hpp"
 
@@ -19,21 +20,19 @@ using std::string;
 
 void logParsed(const Commands::ParseResult& parsed) {
     if(parsed) {
-        spdlog::info("Command recognized: {}{}", json(*parsed).dump(), parsed->reply.empty() ? "" : " (reply: " + parsed->reply + ")");
-    } else if(!parsed.answer.empty()) {
-        spdlog::info("Answering: {}", parsed.answer);
-    } else {
-        spdlog::info("No command recognized");
+        Log::think()->info("Command: {}{}", json(*parsed).dump(), parsed->reply.empty() ? "" : " (reply: " + parsed->reply + ")");
+    } else if(parsed.answer.empty() && parsed.refusal.empty()) {
+        Log::think()->info("Nothing to do");
     }
 }
 
 bool logResult(const Commands::Result& result, bool preview) {
     if(!result.success) {
-        spdlog::warn("{}{}", preview ? "Would reject: " : "Command failed: ", result.error);
+        Log::act()->warn("{}{}", preview ? "Would reject: " : "Command failed: ", result.error);
     } else if(preview) {
-        spdlog::info("Would send: {}", json(result.command).dump());
+        Log::act()->info("Would send: {}", json(result.command).dump());
     } else {
-        spdlog::info("Command sent");
+        Log::act()->info("Sent");
     }
 
     return result.success;
@@ -75,7 +74,7 @@ void CommandWorker::submit(Samples utterance) {
         lock_guard<mutex> lock(queueMutex);
 
         if(pending.size() >= maxPending) {
-            spdlog::warn("Commands are backing up: dropping the oldest unhandled utterance");
+            Log::hear()->warn("Commands are backing up: dropping the oldest unhandled utterance");
             pending.pop_front();
         }
 
@@ -108,7 +107,7 @@ void CommandWorker::run() {
         try {
             handle(std::move(utterance));
         } catch(const std::exception& error) {
-            spdlog::error("Cannot handle utterance: {}", error.what());
+            Log::app()->error("Cannot handle utterance: {}", error.what());
         }
 
         enter(Stage::Idle);
@@ -118,13 +117,13 @@ void CommandWorker::run() {
 void CommandWorker::reloadConfiguration() {
     try {
         if(configuration.reloadIfChanged()) {
-            spdlog::info("Reloaded phrase configuration");
+            Log::app()->info("Reloaded phrase configuration");
         }
 
         lastReloadError.clear();
     } catch(const std::exception& error) {
         if(lastReloadError != error.what()) {
-            spdlog::warn("Keeping previous configuration: {}", error.what());
+            Log::app()->warn("Keeping previous configuration: {}", error.what());
         }
 
         lastReloadError = error.what();
@@ -133,7 +132,7 @@ void CommandWorker::reloadConfiguration() {
 
 void CommandWorker::enter(Stage next) {
     static const char* const names[] = {"idle", "transcribing", "parsing", "executing", "speaking"};
-    spdlog::trace("Worker is {}", names[static_cast<int>(next)]);
+    Log::app()->trace("Worker is {}", names[static_cast<int>(next)]);
     stage = next;
 }
 
@@ -144,7 +143,7 @@ void CommandWorker::speakAloud(const string& text) {
     try {
         speech.speak(text);
     } catch(const std::exception& error) {
-        spdlog::warn("Cannot speak: {}", error.what());
+        Log::say()->warn("Cannot speak: {}", error.what());
     }
 }
 
@@ -189,29 +188,29 @@ void CommandWorker::handle(Queued utterance) {
     if(heard.find_first_not_of(" \t\r\n") == string::npos) {
         return;
     } else if(Grammar::isNonSpeech(heard)) {
-        spdlog::debug("Ignoring non-speech: {}", heard);
+        Log::hear()->debug("Ignoring non-speech: {}", heard);
         return;
     }
 
-    spdlog::info("Input: {}", heard);
+    Log::hear()->info("{}", Grammar::trim(heard));
     const auto words = Grammar::withoutEcho(heard, saidRecently());
 
     if(words.empty()) {
-        spdlog::info("Ignoring the assistant's own voice");
+        Log::hear()->info("(its own voice, ignored)");
         return;
     } else if(words != heard) {
-        spdlog::info("Heard past the assistant's own voice: {}", words);
+        Log::hear()->debug("Without its own voice: {}", words);
     }
 
     auto text = Grammar::stripWakeWord(words, wakeWord);
 
     if(!text && followsUp(utterance.heardAt)) {
-        spdlog::info("Taking this as a follow-up, without the wake word");
+        Log::hear()->debug("Taking this as a follow-up, without the wake word");
         text = Grammar::stripWakeWord(words, "");
     }
 
     if(!text) {
-        spdlog::debug("Ignoring speech without the wake word: {}", words);
+        Log::hear()->debug("Ignoring speech without the wake word: {}", words);
         return;
     }
 
@@ -219,12 +218,12 @@ void CommandWorker::handle(Queued utterance) {
     const bool interrupting = speech.isBusy();
 
     if(interrupting) {
-        spdlog::info("Interrupting the reply");
+        Log::hear()->info("(interrupting)");
         speech.interrupt();
     }
 
     if(text->empty() || (interrupting && Grammar::asksForQuiet(*text))) {
-        spdlog::info(text->empty() ? "Wake word heard with no command" : "Asked to stop talking");
+        Log::hear()->debug(text->empty() ? "Wake word heard with no command" : "Asked to stop talking");
         keepListening(utterance.heardAt);
         return;
     }

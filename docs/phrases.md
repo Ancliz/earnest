@@ -207,7 +207,7 @@ port, default `http://homeassistant.local:8123`), `OLLAMA_URL` (default
 | `src/app/main.cpp` | Implementation selection, modes and the capture loop |
 | `src/app/command_worker.*` | Worker thread: transcribe, filter, parse, execute, reload configuration |
 | `src/app/spoken_reply.hpp` | Chooses the words said after a command |
-| `src/app/logging.*` | Console and file log sinks |
+| `src/log/log.*` | Category loggers, and their console and file sinks |
 | `src/app/settings.*` | Arguments, connection settings, help |
 | `src/commands/command.hpp` | `Command`, `Device`, `Context`, `Result`, and the `Parser`/`Executor` interfaces |
 | `src/commands/services.hpp` | Service catalogue types, filled by executor discovery |

@@ -148,7 +148,8 @@ Every class, type, function and method has a Doxygen comment. With Doxygen insta
 
 ## Project layout
 
-- `src/app/`: startup, settings, logging, implementation selection and the command worker.
+- `src/app/`: startup, settings, implementation selection and the command worker.
+- `src/log/`: one logger per category, and where they write.
 - `src/audio/`: microphone capture, utterance buffering, WAV decoding and playback.
 - `src/speech/`: the transcriber and synthesiser interfaces, with Whisper and Chatterbox implementations.
 - `src/ollama/`: the Ollama client and LLM parser.

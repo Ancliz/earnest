@@ -4,6 +4,7 @@
  */
 
 #include "home_assistant.hpp"
+#include "log/log.hpp"
 
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -238,7 +239,7 @@ void HomeAssistant::refreshPlacements() {
     const auto rows = response && response->status == 200 ? json::parse(response->body, nullptr, false) : json();
 
     if(!rows.is_array()) {
-        spdlog::warn("Cannot read areas from Home Assistant, so devices may have no room");
+        Log::act()->warn("Cannot read areas from Home Assistant, so devices may have no room");
         return;
     }
 
